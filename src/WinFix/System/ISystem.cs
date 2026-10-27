@@ -1,6 +1,7 @@
 namespace WinFix.System;
 
-public sealed record CommandResult(int ExitCode, string Output);
+/// <summary>Output is stdout, Error is stderr. TimedOut: the command ran past its limit and was killed.</summary>
+public sealed record CommandResult(int ExitCode, string Output, string Error = "", bool TimedOut = false);
 
 /// <summary>Every OS side effect goes through here; only WindowsSystem touches the real machine.</summary>
 public interface ISystem

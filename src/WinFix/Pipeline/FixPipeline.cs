@@ -1,11 +1,15 @@
 using WinFix.Diagnose;
 using WinFix.Problems;
 using WinFix.Repairs;
+using WinFix.Reset;
 using WinFix.System;
 
 namespace WinFix.Pipeline;
 
-/// <summary>Detect every module, repair each unhealthy one cheapest-first (re-detect after each step), summarize, confirm reset (exit 3 unless YES) only if a module is still broken; reset is a placeholder.</summary>
+/// <summary>
+/// Detect every module, repair each unhealthy one cheapest-first (re-detect after each step), summarize, confirm reset
+/// (exit 3 unless YES) only if a module is still broken, then run the reset chain. Without a chain the reset is simulated by a reboot.
+/// </summary>
 public sealed class FixPipeline(
     ISystem system,
     TextWriter output,
@@ -14,7 +18,8 @@ public sealed class FixPipeline(
     Func<string?>? readLine = null,
     bool dryRun = false,
     IReadOnlyList<IProblemModule>? modules = null,
-    string? only = null)
+    string? only = null,
+    ResetChain? resetChain = null)
 {
     private const int UsageExitCode = 2;
 
@@ -101,8 +106,22 @@ public sealed class FixPipeline(
 
         output.WriteLine("[4/4] Reset");
         RunState.Clear(system);
-        await system.RebootAsync(ct);
-        return 0;
+        if (resetChain is null)
+        {
+            await system.RebootAsync(ct);
+            return 0;
+        }
+
+        var reset = await resetChain.RunAsync(system, ct);
+        if (reset.Started)
+        {
+            system.Log($"Reset started: {reset.AttemptName}");
+            output.WriteLine($"Reset started: {reset.AttemptName}.");
+            return 0;
+        }
+
+        output.WriteLine($"Every reset attempt failed. Details are in {ResetConfirmation.LogPath}");
+        return reset.ExitCode;
     }
 
     private static string Display(IProblemModule module) => char.ToUpperInvariant(module.Name[0]) + module.Name[1..];
