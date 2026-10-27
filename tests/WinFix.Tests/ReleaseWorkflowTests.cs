@@ -121,6 +121,21 @@ public class ReleaseWorkflowTests
     }
 
     [Fact]
+    public void Every_setup_dotnet_step_installs_the_10_0_SDK_without_global_json()
+    {
+        var workflow = Workflow();
+        var steps = Regex.Matches(workflow, @"uses:\s*actions/setup-dotnet@\S+\s*\n\s+with:\s*\n(\s+[\w-]+:.*\n)+");
+
+        Assert.Equal(2, steps.Count);
+        foreach (Match step in steps)
+        {
+            Assert.Matches(@"dotnet-version:\s*10\.0\.x\s*\n", step.Value);
+        }
+
+        Assert.DoesNotContain("global-json-file", workflow);
+    }
+
+    [Fact]
     public void Uses_the_action_majors_recorded_in_the_stack()
     {
         var workflow = Workflow();
