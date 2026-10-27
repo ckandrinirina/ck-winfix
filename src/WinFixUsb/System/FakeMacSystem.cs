@@ -15,10 +15,15 @@ public sealed class FakeMacSystem : IMacSystem
     /// <summary>In-memory file system keyed by path.</summary>
     public Dictionary<string, string> Files { get; } = [];
 
-    /// <summary>The external disks a Mac with one USB stick plugged in would list.</summary>
+    /// <summary>The `diskutil list -plist external physical` output of a Mac with two USB disks plugged in.</summary>
     public string ExternalDisks { get; init; } =
-        "/dev/disk4 (external, physical): SanDisk Ultra 32.0 GB" + "\n" +
-        "/dev/disk5 (external, physical): Samsung T7 500.1 GB";
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <plist version="1.0"><dict><key>AllDisksAndPartitions</key><array>
+        <dict><key>DeviceIdentifier</key><string>disk4</string><key>Size</key><integer>32000000000</integer><key>MediaName</key><string>SanDisk Ultra</string></dict>
+        <dict><key>DeviceIdentifier</key><string>disk5</string><key>Size</key><integer>500107862016</integer><key>MediaName</key><string>Samsung T7</string></dict>
+        </array></dict></plist>
+        """;
 
     /// <summary>Lines AskAsync returns in order; null once they run out.</summary>
     public IReadOnlyList<string> Answers

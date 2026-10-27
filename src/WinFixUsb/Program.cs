@@ -1,4 +1,5 @@
 using WinFix;
+using WinFixUsb.Disks;
 using WinFixUsb.System;
 
 namespace WinFixUsb;
@@ -7,7 +8,6 @@ public static class Program
 {
     private const string Product = "WinFixUsb";
     private const string UnknownIso = "<iso>";
-    private const string UnknownDisk = "<disk>";
 
     private const string Help = """
         Writes a bootable Windows install USB from a Mac and puts WinFix.exe on it.
@@ -21,9 +21,11 @@ public static class Program
 
     public static Task<int> Main(string[] args) => RunAsync(args, Console.Out);
 
-    /// <summary>--dry-run never touches the Mac.</summary>
-    public static IMacSystem CreateSystem(bool dryRun) =>
-        dryRun ? new FakeMacSystem() : throw new NotSupportedException("The real Mac system is not built yet.");
+    /// <summary>--dry-run never touches the Mac; its fake confirms the disk it was given (disk4 by default).</summary>
+    public static IMacSystem CreateSystem(bool dryRun, string? disk = null) =>
+        dryRun
+            ? new FakeMacSystem { Answers = [disk ?? "disk4"] }
+            : throw new NotSupportedException("The real Mac system is not built yet.");
 
     public static async Task<int> RunAsync(string[] args, TextWriter output, IMacSystem? system = null)
     {
@@ -41,29 +43,35 @@ public static class Program
         }
 
         var iso = ValueOf(args, "--iso") ?? UnknownIso;
-        var disk = ValueOf(args, "--disk") ?? UnknownDisk;
-        system ??= CreateSystem(dryRun: true);
+        var requestedDisk = ValueOf(args, "--disk");
+        system ??= CreateSystem(dryRun: true, requestedDisk);
 
-        var plan = new (string Title, string Command, string Arguments)[]
-        {
-            ($"Find the ISO: {iso}", "hdiutil", $"attach -nobrowse -readonly -plist {iso}"),
-            ($"Pick the USB: {disk}", "diskutil", "list -plist external physical"),
-            ($"Erase the USB {disk}", "diskutil", $"eraseDisk FAT32 WINFIX MBR {disk}"),
-            ("Copy Windows Setup", "rsync", "-a --exclude sources/install.wim /Volumes/WINDOWS_ISO/ /Volumes/WINFIX/"),
-            ("Split install.wim", "wimlib-imagex", "split /Volumes/WINDOWS_ISO/sources/install.wim /Volumes/WINFIX/sources/install.swm 3800"),
-            ("Copy WinFix.exe", "cp", "WinFix.exe /Volumes/WINFIX/"),
-            ($"Eject the USB {disk}", "diskutil", $"eject {disk}"),
-        };
+        await Step(1, $"Find the ISO: {iso}", "hdiutil", $"attach -nobrowse -readonly -plist {iso}");
 
-        for (var i = 0; i < plan.Length; i++)
+        output.WriteLine("2. Pick the USB");
+        output.WriteLine("   would run: diskutil list -plist external physical");
+        var picked = await DiskPicker.PickAsync(system, requestedDisk, output, CancellationToken.None);
+        if (picked is null)
         {
-            var (title, command, arguments) = plan[i];
-            output.WriteLine($"{i + 1}. {title}");
+            return 1;
+        }
+
+        var disk = picked.Identifier;
+        output.WriteLine($"   picked: {disk} ({picked.Name}, {picked.SizeText})");
+
+        await Step(3, $"Erase the USB {disk}", "diskutil", $"eraseDisk FAT32 WINFIX MBR {disk}");
+        await Step(4, "Copy Windows Setup", "rsync", "-a --exclude sources/install.wim /Volumes/WINDOWS_ISO/ /Volumes/WINFIX/");
+        await Step(5, "Split install.wim", "wimlib-imagex", "split /Volumes/WINDOWS_ISO/sources/install.wim /Volumes/WINFIX/sources/install.swm 3800");
+        await Step(6, "Copy WinFix.exe", "cp", "WinFix.exe /Volumes/WINFIX/");
+        await Step(7, $"Eject the USB {disk}", "diskutil", $"eject {disk}");
+        return 0;
+
+        async Task Step(int number, string title, string command, string arguments)
+        {
+            output.WriteLine($"{number}. {title}");
             output.WriteLine($"   would run: {command} {arguments}");
             await system.RunCommandAsync(command, arguments, CancellationToken.None);
         }
-
-        return 0;
     }
 
     private static string? ValueOf(string[] args, string option)
