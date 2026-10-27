@@ -22,15 +22,15 @@ public sealed class NetworkProblem : IProblemModule
 
     public async Task<Health> DetectAsync(ISystem system, CancellationToken ct)
     {
-        var adapters = await RunScriptAsync(system, AdapterScript, ct);
+        var adapters = await system.RunCommandAsync("powershell", $"-NoProfile -NonInteractive -Command \"{AdapterScript}\"", ct);
         if (adapters.ExitCode == 0 && int.TryParse(adapters.Output.Trim(), out var up) && up == 0)
         {
             // Nothing to reset: reported as healthy so no repair runs.
             return new Health(true, "No network adapter connected");
         }
 
-        var dns = await RunScriptAsync(system, DnsScript, ct);
-        var tcp = await RunScriptAsync(system, TcpScript, ct);
+        var dns = await system.RunCommandAsync("powershell", $"-NoProfile -NonInteractive -Command \"{DnsScript}\"", ct);
+        var tcp = await system.RunCommandAsync("powershell", $"-NoProfile -NonInteractive -Command \"{TcpScript}\"", ct);
 
         // Only a probe that ran and said False counts as a failure.
         return Failed(dns) && Failed(tcp)
@@ -40,7 +40,4 @@ public sealed class NetworkProblem : IProblemModule
 
     private static bool Failed(CommandResult probe) =>
         probe.ExitCode == 0 && probe.Output.Trim().Equals("False", StringComparison.OrdinalIgnoreCase);
-
-    private static Task<CommandResult> RunScriptAsync(ISystem system, string script, CancellationToken ct) =>
-        system.RunCommandAsync("powershell", $"-NoProfile -NonInteractive -Command \"{script}\"", ct);
 }

@@ -22,6 +22,8 @@ public sealed partial class MdmKeepFilesReset(IRepairStep? repairWinRe = null, T
         + "$r = Invoke-CimMethod -InputObject $i -MethodName doWipePersistUserDataMethod -Arguments @{param=''} -ErrorAction Stop; "
         + "exit [int]$r.ReturnValue } catch { exit 1 }";
 
+    private const string TaskCommand = $"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \\\"{WmiScript}\\\"";
+
     private readonly IRepairStep _repairWinRe = repairWinRe ?? new RepairWinReStep();
     private readonly TimeSpan _timeout = timeout ?? TimeSpan.FromMinutes(10);
 
@@ -35,9 +37,8 @@ public sealed partial class MdmKeepFilesReset(IRepairStep? repairWinRe = null, T
             system.Log($"Continuing the reset although the recovery environment is not ready: {winRe.Message}");
         }
 
-        var command = $"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \\\"{WmiScript}\\\"";
         var create = await system.RunCommandAsync(
-            "schtasks", $"/Create /TN {TaskName} /RU SYSTEM /SC ONCE /ST 00:00 /RL HIGHEST /F /TR \"{command}\"", ct);
+            "schtasks", $"/Create /TN {TaskName} /RU SYSTEM /SC ONCE /ST 00:00 /RL HIGHEST /F /TR \"{TaskCommand}\"", ct);
         if (create.ExitCode != 0)
         {
             return Failed(system, $"Could not create the reset task (exit code {create.ExitCode}).");

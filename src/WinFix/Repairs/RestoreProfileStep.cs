@@ -13,6 +13,9 @@ public sealed partial class RestoreProfileStep(Func<DateTimeOffset>? clock = nul
 {
     private const string ListKey = ProfileProblem.ProfileListKey;
 
+    // Left for cmd.exe to expand, so it never goes through CommandArgs.
+    private const string ExportFolder = @"%ProgramData%\WinFix";
+
     private readonly Func<DateTimeOffset> _clock = clock ?? (() => DateTimeOffset.Now);
 
     public string Name => "Restore the real user profile";
@@ -70,7 +73,7 @@ public sealed partial class RestoreProfileStep(Func<DateTimeOffset>? clock = nul
 
         foreach (var name in new[] { "State", "RefCount" })
         {
-            var reset = await Reg(system, $"add \"{key}\" /v {name} /t REG_DWORD /d 0 /f", ct);
+            var reset = await Reg(system, $"add {CommandArgs.QuoteCmd(key)} /v {name} /t REG_DWORD /d 0 /f", ct);
             if (reset.ExitCode != 0)
             {
                 return Fail(system, $"{name} could not be reset: {reset.Output.Trim()}", reset.ExitCode);
@@ -94,11 +97,10 @@ public sealed partial class RestoreProfileStep(Func<DateTimeOffset>? clock = nul
 
     private Task<CommandResult> Export(ISystem system, CancellationToken ct)
     {
-        var folder = @"%ProgramData%\WinFix";
-        var file = $@"{folder}\ProfileList-{_clock():yyyyMMdd-HHmmss}.reg";
+        // The only non-constant part is the time, formatted as ASCII digits.
         return system.RunCommandAsync(
             "cmd.exe",
-            $"/c (if not exist \"{folder}\" mkdir \"{folder}\") && reg export \"{ListKey}\" \"{file}\" /y",
+            $"/c (if not exist \"{ExportFolder}\" mkdir \"{ExportFolder}\") && reg export \"{ListKey}\" \"{ExportFolder}\\ProfileList-{_clock():yyyyMMdd-HHmmss}.reg\" /y",
             ct);
     }
 
@@ -106,17 +108,17 @@ public sealed partial class RestoreProfileStep(Func<DateTimeOffset>? clock = nul
     private static async Task<StepResult?> MoveBakToKeyAsync(ISystem system, string key, string bakKey, CancellationToken ct)
     {
         var tempKey = key + ".temp";
-        var aside = await Reg(system, $"copy \"{key}\" \"{tempKey}\" /s /f", ct);
+        var aside = await Reg(system, $"copy {CommandArgs.QuoteCmd(key)} {CommandArgs.QuoteCmd(tempKey)} /s /f", ct);
         if (aside.ExitCode != 0)
         {
             return Fail(system, $"The temporary profile key could not be copied: {aside.Output.Trim()}", aside.ExitCode);
         }
 
         system.DeleteRegistryKey(key);
-        var promote = await Reg(system, $"copy \"{bakKey}\" \"{key}\" /s /f", ct);
+        var promote = await Reg(system, $"copy {CommandArgs.QuoteCmd(bakKey)} {CommandArgs.QuoteCmd(key)} /s /f", ct);
         if (promote.ExitCode != 0)
         {
-            await Reg(system, $"copy \"{tempKey}\" \"{key}\" /s /f", ct);
+            await Reg(system, $"copy {CommandArgs.QuoteCmd(tempKey)} {CommandArgs.QuoteCmd(key)} /s /f", ct);
             return Fail(system, $"The real profile key could not be activated: {promote.Output.Trim()}", promote.ExitCode);
         }
 
@@ -133,7 +135,7 @@ public sealed partial class RestoreProfileStep(Func<DateTimeOffset>? clock = nul
             return null;
         }
 
-        var check = await system.RunCommandAsync("cmd.exe", $"/c if exist \"{folder}\\NTUSER.DAT\" (exit /b 0) else (exit /b 1)", ct);
+        var check = await system.RunCommandAsync("cmd.exe", $"/c if exist {CommandArgs.QuoteCmd($@"{folder}\NTUSER.DAT")} (exit /b 0) else (exit /b 1)", ct);
         return check.ExitCode == 0 ? folder : null;
     }
 

@@ -38,4 +38,10 @@ public static class CommandArgs
     /// </summary>
     public static bool CanQuoteCmd(string value) =>
         !value.EndsWith('\\') && !value.Any(c => c is '"' or '%' || char.IsControl(c));
+
+    /// <summary>The value between double quotes, for a cmd.exe or native command line; throws when <see cref="CanQuoteCmd"/> is false.</summary>
+    public static string QuoteCmd(string value) =>
+        CanQuoteCmd(value)
+            ? $"\"{value}\""
+            : throw new ArgumentException("The value holds a double quote, a %, a control character or a trailing backslash.", nameof(value));
 }

@@ -63,7 +63,7 @@ public static partial class MediaMatcher
 
         for (var index = 1; index <= MaxImages; index++)
         {
-            var result = await system.RunCommandAsync("dism", $"/Get-WimInfo /WimFile:\"{imagePath}\" /Index:{index}", ct);
+            var result = await system.RunCommandAsync("dism", $"/Get-WimInfo /WimFile:{CommandArgs.QuoteCmd(imagePath)} /Index:{index}", ct);
             var image = result.ExitCode == 0 ? ParseWimInfo(result.Output) : null;
             if (image is null)
             {

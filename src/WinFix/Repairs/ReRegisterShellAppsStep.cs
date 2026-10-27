@@ -15,7 +15,7 @@ public sealed class ReRegisterShellAppsStep : IRepairStep
         foreach (var package in Packages)
         {
             var script = "$ErrorActionPreference='Stop'; "
-                + $"Get-AppxPackage -AllUsers *{package}* | ForEach-Object "
+                + $"Get-AppxPackage -AllUsers {CommandArgs.QuotePowerShell($"*{package}*")} | ForEach-Object "
                 + "{ Add-AppxPackage -DisableDevelopmentMode -Register ($_.InstallLocation + '\\AppXManifest.xml') }";
             var result = await system.RunCommandAsync(
                 "powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -Command \"{script}\"", ct);

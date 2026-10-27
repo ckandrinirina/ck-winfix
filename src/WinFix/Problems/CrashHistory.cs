@@ -42,7 +42,13 @@ internal static partial class CrashHistory
     public static async Task<IReadOnlyList<string>> ListMinidumpsAsync(ISystem system, CancellationToken ct)
     {
         var folder = $@"{system.WindowsDirectory}\Minidump";
-        var result = await system.RunCommandAsync("cmd", $"/c dir /b \"{folder}\\*.dmp\"", ct);
+        if (!CommandArgs.CanQuoteCmd(folder))
+        {
+            system.Log($"Minidumps not listed: {folder} cannot be passed to cmd.exe safely.");
+            return [];
+        }
+
+        var result = await system.RunCommandAsync("cmd", $"/c dir /b {CommandArgs.QuoteCmd($@"{folder}\*.dmp")}", ct);
         if (result.ExitCode != 0)
         {
             return [];

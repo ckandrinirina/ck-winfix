@@ -33,7 +33,7 @@ public sealed class StartAppsProblem : IProblemModule
     /// <summary>A package is broken when it has no copy in the Ok status.</summary>
     internal static async Task<IReadOnlyList<BrokenPackage>> FindBrokenAsync(ISystem system, CancellationToken ct)
     {
-        var names = string.Join(",", PackageNames.Select(n => $"'{n}'"));
+        var names = string.Join(",", PackageNames.Select(CommandArgs.QuotePowerShell));
         var script = $"Get-AppxPackage -AllUsers | Where-Object {{ @({names}) -contains $_.Name }} "
             + "| ForEach-Object { [pscustomobject]@{ Name = $_.Name; Status = $_.Status.ToString(); InstallLocation = $_.InstallLocation } } "
             + "| ConvertTo-Json -Compress";

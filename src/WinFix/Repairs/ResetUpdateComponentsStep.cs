@@ -11,6 +11,10 @@ public sealed class ResetUpdateComponentsStep : IRepairStep
     private static readonly string[] StopOrder = ["bits", "wuauserv", "cryptsvc"];
     private static readonly string[] StartOrder = ["cryptsvc", "bits", "wuauserv"];
 
+    // Cache folder under the Windows folder, and its bare name for ren.
+    private static readonly (string Parent, string Name)[] Caches =
+        [("SoftwareDistribution", "DataStore"), ("SoftwareDistribution", "Download"), ("System32", "catroot2")];
+
     private static readonly (string Service, string StartType)[] Defaults =
         [("wuauserv", "demand"), ("bits", "delayed-auto"), ("cryptsvc", "auto")];
 
@@ -18,6 +22,12 @@ public sealed class ResetUpdateComponentsStep : IRepairStep
 
     public async Task<StepResult> RunAsync(ISystem system, CancellationToken ct)
     {
+        if (!CommandArgs.CanQuoteCmd(system.WindowsDirectory))
+        {
+            system.Log($"The Windows folder {system.WindowsDirectory} cannot be passed to cmd.exe safely.");
+            return new StepResult(1, "The Windows Update caches could not be reset: the Windows folder name is unusual.");
+        }
+
         var failure = (StepResult?)null;
 
         async Task RunAsync(string fileName, string arguments, bool mustSucceed = true)
@@ -37,13 +47,12 @@ public sealed class ResetUpdateComponentsStep : IRepairStep
 
         await RunAsync("cmd.exe", $@"/c del /f /q ""{BitsQueueFiles}""", mustSucceed: false);
 
-        var distribution = $@"{system.WindowsDirectory}\SoftwareDistribution";
-        foreach (var folder in new[] { $@"{distribution}\DataStore", $@"{distribution}\Download", $@"{system.WindowsDirectory}\System32\catroot2" })
+        foreach (var (parent, name) in Caches)
         {
-            var backup = $"{folder}.bak";
-            var backupName = backup[(backup.LastIndexOf('\\') + 1)..]; // ren takes a bare name
-            await RunAsync("cmd.exe", $@"/c if exist ""{backup}"" rd /s /q ""{backup}""");
-            await RunAsync("cmd.exe", $@"/c if exist ""{folder}"" ren ""{folder}"" {backupName}");
+            var folder = CommandArgs.QuoteCmd($@"{system.WindowsDirectory}\{parent}\{name}");
+            var backup = CommandArgs.QuoteCmd($@"{system.WindowsDirectory}\{parent}\{name}.bak");
+            await RunAsync("cmd.exe", $"/c if exist {backup} rd /s /q {backup}");
+            await RunAsync("cmd.exe", $"/c if exist {folder} ren {folder} {name}.bak");
         }
 
         foreach (var (service, startType) in Defaults)
