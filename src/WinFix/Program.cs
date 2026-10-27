@@ -32,6 +32,7 @@ public static class Program
         ISystem? system = null,
         Func<string?>? readLine = null)
     {
+        AboutBanner.Write(output, "WinFix", typeof(Program).Assembly);
         var dryRun = args.Contains("--dry-run");
         if (!dryRun && !new AdminCheck(isAdmin ?? AdminCheck.IsElevatedOnWindows).TryProceed(output, out var exitCode))
         {

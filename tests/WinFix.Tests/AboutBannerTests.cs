@@ -31,7 +31,7 @@ public class AboutBannerTests
     }
 
     [Fact]
-    public void Version_of_an_assembly_without_informational_version_falls_back_to_unknown_or_assembly_version()
+    public void Version_of_a_framework_assembly_is_never_empty()
     {
         Assert.NotEmpty(AboutBanner.VersionOf(typeof(string).Assembly));
     }
