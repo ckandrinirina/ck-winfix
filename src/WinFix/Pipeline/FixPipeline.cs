@@ -1,77 +1,92 @@
 using WinFix.Diagnose;
+using WinFix.Problems;
 using WinFix.Repairs;
 using WinFix.System;
 
 namespace WinFix.Pipeline;
 
-/// <summary>Diagnose, repairs cheapest-first (health check after each), reset confirmation (exit 3 unless YES), reset; reset is a placeholder.</summary>
+/// <summary>Detect every module, repair each unhealthy one cheapest-first (re-detect after each step), summarize, confirm reset (exit 3 unless YES) only if a module is still broken; reset is a placeholder.</summary>
 public sealed class FixPipeline(
     ISystem system,
     TextWriter output,
     ShellHealthCheck? healthCheck = null,
     IReadOnlyList<IRepairStep>? steps = null,
     Func<string?>? readLine = null,
-    bool dryRun = false)
+    bool dryRun = false,
+    IReadOnlyList<IProblemModule>? modules = null,
+    string? only = null)
 {
-    private readonly ShellHealthCheck _healthCheck = healthCheck ?? new ShellHealthCheck(system);
+    private const int UsageExitCode = 2;
 
-    private readonly IReadOnlyList<IRepairStep> _steps =
-        steps ??
-        [
-            new RestartExplorerStep(),
-            new ClearIrisServiceStep(),
-            new ReRegisterShellAppsStep(),
-            new DismRestoreHealthStep(),
-            new SfcScanStep(),
-            new ShellExtensionsStep(),
-        ];
+    private readonly IReadOnlyList<IProblemModule> _modules = modules ?? [new ShellProblem(healthCheck, steps)];
+
+    private const string StillBroken = "Still broken";
+
+    private sealed record Outcome(string Summary, bool Rebooting = false);
 
     public async Task<int> RunAsync(CancellationToken ct, bool resume = false)
     {
-        var firstStage = resume ? RunState.Load(system)?.NextStage ?? 0 : 0;
-        output.WriteLine("[1/4] Diagnose");
-        var diagnosis = await _healthCheck.CheckAsync(ct);
-        output.WriteLine(diagnosis.Reason);
-        if (diagnosis.Healthy)
+        var selected = _modules.Where(m => only is null || m.Name.Equals(only, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (selected.Count == 0)
         {
-            output.WriteLine("Shell is healthy — nothing to do");
-            RunState.Clear(system);
-            return 0;
+            output.WriteLine($"Unknown module: {only}. Known modules: {string.Join(", ", _modules.Select(m => m.Name))}");
+            return UsageExitCode;
         }
 
-        output.WriteLine("[2/4] Repairs");
-        for (var index = firstStage; index < _steps.Count; index++)
+        var (resumeModule, resumeStep) = FindResumePoint(selected, resume ? RunState.Load(system) : null);
+
+        output.WriteLine("[1/4] Diagnose");
+        var health = new List<Health>();
+        foreach (var module in selected)
         {
-            var step = _steps[index];
-            if (step.NeedsReboot)
+            var detected = await module.DetectAsync(system, ct);
+            output.WriteLine(detected.Reason);
+            if (detected.Healthy)
             {
-                new RunState(index + 1).Save(system);
+                output.WriteLine($"{Display(module)} is healthy — nothing to do");
             }
 
-            var result = await RunStepAsync(step, ct);
-            if (step.NeedsReboot || result?.RebootRequired == true)
+            health.Add(detected);
+        }
+
+        var outcomes = new List<Outcome>();
+        if (health.Any(h => !h.Healthy))
+        {
+            output.WriteLine("[2/4] Repairs");
+        }
+
+        for (var i = 0; i < selected.Count; i++)
+        {
+            if (health[i].Healthy)
             {
-                // a NeedsReboot step saved before it ran; a reboot decided by the result saves now
-                if (!step.NeedsReboot)
+                outcomes.Add(new Outcome("Healthy"));
+            }
+            else if (i < resumeModule)
+            {
+                outcomes.Add(new Outcome(StillBroken));
+            }
+            else
+            {
+                var outcome = await RepairAsync(selected[i], i == resumeModule ? resumeStep : 0, ct);
+                if (outcome.Rebooting)
                 {
-                    new RunState(index + 1).Save(system);
+                    return 0;
                 }
 
-                output.WriteLine("Restarting to finish this repair. WinFix will continue by itself.");
-                await system.RebootAsync(ct);
-                return 0;
+                outcomes.Add(outcome);
             }
+        }
 
-            var health = await _healthCheck.CheckAsync(ct);
-            output.WriteLine(health.Reason);
-            if (health.Healthy)
-            {
-                var fixedBy = $"Fixed by {step.Name}";
-                system.Log(fixedBy);
-                output.WriteLine(fixedBy);
-                RunState.Clear(system);
-                return 0;
-            }
+        output.WriteLine("Summary");
+        for (var i = 0; i < selected.Count; i++)
+        {
+            output.WriteLine($"{Display(selected[i])}: {outcomes[i].Summary}");
+        }
+
+        if (outcomes.All(o => o.Summary != StillBroken))
+        {
+            RunState.Clear(system);
+            return 0;
         }
 
         output.WriteLine("[3/4] Confirm reset");
@@ -88,6 +103,60 @@ public sealed class FixPipeline(
         RunState.Clear(system);
         await system.RebootAsync(ct);
         return 0;
+    }
+
+    private static string Display(IProblemModule module) => char.ToUpperInvariant(module.Name[0]) + module.Name[1..];
+
+    /// <summary>A state saved before modules existed has no module name and belongs to the first one.</summary>
+    private static (int Module, int Step) FindResumePoint(List<IProblemModule> modules, RunState? state)
+    {
+        if (state is null)
+        {
+            return (-1, 0);
+        }
+
+        var index = state.Module is null
+            ? 0
+            : modules.FindIndex(m => m.Name.Equals(state.Module, StringComparison.OrdinalIgnoreCase));
+        return index < 0 ? (-1, 0) : (index, state.NextStage);
+    }
+
+    private async Task<Outcome> RepairAsync(IProblemModule module, int firstStep, CancellationToken ct)
+    {
+        for (var index = firstStep; index < module.Repairs.Count; index++)
+        {
+            var step = module.Repairs[index];
+            if (step.NeedsReboot)
+            {
+                new RunState(index + 1, module.Name).Save(system);
+            }
+
+            var result = await RunStepAsync(step, ct);
+            if (step.NeedsReboot || result?.RebootRequired == true)
+            {
+                // a NeedsReboot step saved before it ran; a reboot decided by the result saves now
+                if (!step.NeedsReboot)
+                {
+                    new RunState(index + 1, module.Name).Save(system);
+                }
+
+                output.WriteLine("Restarting to finish this repair. WinFix will continue by itself.");
+                await system.RebootAsync(ct);
+                return new Outcome("Rebooting", Rebooting: true);
+            }
+
+            var health = await module.DetectAsync(system, ct);
+            output.WriteLine(health.Reason);
+            if (health.Healthy)
+            {
+                var fixedBy = $"Fixed by {step.Name}";
+                system.Log(fixedBy);
+                output.WriteLine(fixedBy);
+                return new Outcome(fixedBy);
+            }
+        }
+
+        return new Outcome(StillBroken);
     }
 
     private async Task<StepResult?> RunStepAsync(IRepairStep step, CancellationToken ct)
