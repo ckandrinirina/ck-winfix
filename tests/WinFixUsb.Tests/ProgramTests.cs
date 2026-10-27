@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using WinFixUsb.System;
+using WinFixUsb.Tests.Disks;
 
 namespace WinFixUsb.Tests;
 
@@ -28,10 +29,13 @@ public class ProgramTests
         return Path.Combine(dir.FullName, relative);
     }
 
-    private static async Task<(int Exit, string[] Lines, FakeMacSystem Fake)> RunAsync(params string[] args)
+    private static Task<(int Exit, string[] Lines, FakeMacSystem Fake)> RunAsync(params string[] args) =>
+        RunWithAsync(new FakeMacSystem { Answers = ["disk4"] }, args);
+
+    private static async Task<(int Exit, string[] Lines, FakeMacSystem Fake)> RunWithAsync(
+        FakeMacSystem fake, params string[] args)
     {
         var output = new StringWriter();
-        var fake = new FakeMacSystem();
 
         var exit = await Program.RunAsync(args, output, fake);
 
@@ -91,7 +95,7 @@ public class ProgramTests
         Assert.Contains(fake.Calls, c => c.StartsWith("RunCommand diskutil list"));
         Assert.Contains(fake.Calls, c => c.StartsWith("RunCommand diskutil eraseDisk"));
         Assert.Contains(fake.Calls, c => c.StartsWith("RunCommand diskutil eject"));
-        Assert.All(fake.Calls, c => Assert.StartsWith("RunCommand ", c));
+        Assert.All(fake.Calls, c => Assert.True(c.StartsWith("RunCommand ") || c.StartsWith("Ask "), c));
     }
 
     [Fact]
@@ -119,12 +123,13 @@ public class ProgramTests
     [Fact]
     public async Task Dry_run_uses_the_disk_and_iso_given_on_the_command_line()
     {
-        var (exit, lines, fake) = await RunAsync("--dry-run", "--disk", "disk9", "--iso", "/tmp/Win.iso");
+        var (exit, lines, fake) = await RunWithAsync(
+            new FakeMacSystem { Answers = ["disk5"] }, "--dry-run", "--disk", "disk5", "--iso", "/tmp/Win.iso");
 
         Assert.Equal(0, exit);
-        Assert.Contains(fake.Calls, c => c.Contains("disk9"));
+        Assert.Contains(fake.Calls, c => c.Contains("eraseDisk FAT32 WINFIX MBR disk5"));
         Assert.Contains(fake.Calls, c => c.Contains("/tmp/Win.iso"));
-        Assert.Contains(lines, l => l.Contains("disk9"));
+        Assert.Contains(lines, l => l.Contains("disk5"));
     }
 
     [Fact]
@@ -168,5 +173,57 @@ public class ProgramTests
 
         Assert.Equal(2, exit);
         Assert.Empty(fake.Calls);
+    }
+
+    [Fact]
+    public async Task Dry_run_plan_uses_the_disk_the_user_confirmed()
+    {
+        var (exit, lines, fake) = await RunAsync("--dry-run");
+
+        Assert.Equal(0, exit);
+        Assert.Contains(fake.Calls, c => c == "RunCommand diskutil eraseDisk FAT32 WINFIX MBR disk4");
+        Assert.Contains(lines, l => l.Contains("disk4") && l.Contains("SanDisk Ultra"));
+        Assert.Contains(fake.Calls, c => c.StartsWith("Ask "));
+    }
+
+    [Fact]
+    public async Task A_wrong_confirmation_exits_1_and_plans_no_erase()
+    {
+        var (exit, lines, fake) = await RunWithAsync(new FakeMacSystem { Answers = ["nope"] }, "--dry-run");
+
+        Assert.Equal(1, exit);
+        Assert.Contains(lines, l => l.Contains("Nothing was erased."));
+        Assert.DoesNotContain(fake.Calls, c => c.Contains("eraseDisk"));
+    }
+
+    [Fact]
+    public async Task An_unknown_disk_on_the_command_line_exits_1_and_plans_no_erase()
+    {
+        var (exit, _, fake) = await RunAsync("--dry-run", "--disk", "disk0");
+
+        Assert.Equal(1, exit);
+        Assert.DoesNotContain(fake.Calls, c => c.Contains("eraseDisk"));
+    }
+
+    [Fact]
+    public async Task No_external_disk_exits_1_with_the_plug_in_message()
+    {
+        var (exit, lines, fake) = await RunWithAsync(
+            new FakeMacSystem { ExternalDisks = DiskFixtures.Plist() }, "--dry-run");
+
+        Assert.Equal(1, exit);
+        Assert.Contains("Plug in a USB drive of at least 8 GB and run again.", lines);
+        Assert.DoesNotContain(fake.Calls, c => c.Contains("eraseDisk"));
+    }
+
+    [Fact]
+    public async Task Dry_run_without_an_injected_system_confirms_the_disk_it_was_given()
+    {
+        var output = new StringWriter();
+
+        var exit = await Program.RunAsync(["--dry-run", "--disk", "disk5"], output);
+
+        Assert.Equal(0, exit);
+        Assert.Contains("disk5", output.ToString());
     }
 }
