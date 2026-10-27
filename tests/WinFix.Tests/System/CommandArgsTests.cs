@@ -53,4 +53,19 @@ public class CommandArgsTests
     {
         Assert.True(CommandArgs.CanQuoteCmd(value));
     }
+
+    [Fact]
+    public void A_normal_path_is_double_quoted_as_it_is()
+    {
+        Assert.Equal(@"""C:\Windows\Minidump\*.dmp""", CommandArgs.QuoteCmd(@"C:\Windows\Minidump\*.dmp"));
+    }
+
+    [Theory]
+    [InlineData("a\"&calc&\"b")]
+    [InlineData("%COMSPEC%")]
+    [InlineData(@"C:\folder\")]
+    public void A_value_that_cannot_be_double_quoted_safely_is_refused(string value)
+    {
+        Assert.Throws<ArgumentException>(() => CommandArgs.QuoteCmd(value));
+    }
 }

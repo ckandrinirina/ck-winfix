@@ -201,4 +201,18 @@ public class WindowsUpdateProblemTests
         Assert.Contains(fake.Calls, c => c.Contains(@"ren ""D:\Win\System32\catroot2""", StringComparison.Ordinal));
         Assert.Contains(fake.Calls, c => c.Contains(@"ren ""D:\Win\SoftwareDistribution\Download""", StringComparison.Ordinal));
     }
+
+    [Theory]
+    [InlineData(@"C:\Win""&calc&""dows")]
+    [InlineData(@"C:\Win%COMSPEC%dows")]
+    public async Task A_crafted_windows_folder_fails_the_reset_without_running_anything(string windows)
+    {
+        var fake = new FakeSystem { WindowsDirectory = windows };
+
+        var result = await new ResetUpdateComponentsStep().RunAsync(fake, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.DoesNotContain(fake.Calls, c => c.StartsWith("RunCommand", StringComparison.Ordinal));
+        Assert.Contains(fake.Logs, l => l.Contains(windows, StringComparison.Ordinal));
+    }
 }

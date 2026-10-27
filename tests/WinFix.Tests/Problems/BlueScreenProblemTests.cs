@@ -489,4 +489,17 @@ public class BlueScreenProblemTests
         Assert.True(result.Succeeded);
         Assert.DoesNotContain(fake.Calls, c => c.Contains("wusa", StringComparison.Ordinal));
     }
+
+    [Theory]
+    [InlineData(@"C:\Win""&calc&""dows")]
+    [InlineData(@"C:\Win%COMSPEC%dows")]
+    public async Task A_crafted_windows_folder_never_reaches_the_minidump_command(string windows)
+    {
+        var fake = new FakeSystem { CommandResponder = TwoCrashes().Respond, WindowsDirectory = windows };
+
+        var health = await new BlueScreenProblem(() => Now).DetectAsync(fake, CancellationToken.None);
+
+        Assert.False(health.Healthy);
+        Assert.DoesNotContain(fake.Calls, c => c.Contains("calc", StringComparison.Ordinal) || c.Contains("%COMSPEC%", StringComparison.Ordinal));
+    }
 }
