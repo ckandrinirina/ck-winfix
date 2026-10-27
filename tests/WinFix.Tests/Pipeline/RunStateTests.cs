@@ -26,7 +26,7 @@ public class RunStateTests
         FakeSystem fake, IReadOnlyList<IRepairStep> steps, bool resume = false)
     {
         var output = new StringWriter();
-        var exit = await new FixPipeline(fake, output, steps: steps).RunAsync(CancellationToken.None, resume);
+        var exit = await new FixPipeline(fake, output, steps: steps, readLine: () => "YES").RunAsync(CancellationToken.None, resume);
         return (exit, output.ToString());
     }
 

@@ -20,6 +20,6 @@ public static class Program
             return 2;
         }
 
-        return await new FixPipeline(system ?? new FakeSystem(), output).RunAsync(CancellationToken.None, args.Contains("--resume"));
+        return await new FixPipeline(system ?? new FakeSystem(), output, dryRun: true).RunAsync(CancellationToken.None, args.Contains("--resume"));
     }
 }

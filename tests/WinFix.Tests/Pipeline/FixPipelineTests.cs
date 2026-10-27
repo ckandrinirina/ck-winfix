@@ -11,7 +11,7 @@ public class FixPipelineTests
     {
         var fake = new FakeSystem { ShellHealthy = shellHealthy };
         var output = new StringWriter();
-        var exit = await new FixPipeline(fake, output).RunAsync(CancellationToken.None);
+        var exit = await new FixPipeline(fake, output, readLine: () => "YES").RunAsync(CancellationToken.None);
         return (exit, output.ToString(), fake);
     }
 
@@ -63,7 +63,7 @@ public class FixPipelineTests
         var fake = new FakeSystem { ShellHealthy = false, RepairFixesShell = true };
         var output = new StringWriter();
 
-        var exit = await new FixPipeline(fake, output).RunAsync(CancellationToken.None);
+        var exit = await new FixPipeline(fake, output, readLine: () => "YES").RunAsync(CancellationToken.None);
 
         var text = output.ToString();
         Assert.Equal(0, exit);

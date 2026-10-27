@@ -19,7 +19,7 @@ public class QuickRepairsTests
         FakeSystem fake, IReadOnlyList<IRepairStep>? steps = null)
     {
         var output = new StringWriter();
-        var exit = await new FixPipeline(fake, output, QuickCheck(fake), steps).RunAsync(CancellationToken.None);
+        var exit = await new FixPipeline(fake, output, QuickCheck(fake), steps, () => "YES").RunAsync(CancellationToken.None);
         return (exit, output.ToString(), fake);
     }
 

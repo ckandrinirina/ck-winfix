@@ -4,12 +4,14 @@ using WinFix.System;
 
 namespace WinFix.Pipeline;
 
-/// <summary>Diagnose, repairs cheapest-first (health check after each), reset confirmation, reset; reset is a placeholder.</summary>
+/// <summary>Diagnose, repairs cheapest-first (health check after each), reset confirmation (exit 3 unless YES), reset; reset is a placeholder.</summary>
 public sealed class FixPipeline(
     ISystem system,
     TextWriter output,
     ShellHealthCheck? healthCheck = null,
-    IReadOnlyList<IRepairStep>? steps = null)
+    IReadOnlyList<IRepairStep>? steps = null,
+    Func<string?>? readLine = null,
+    bool dryRun = false)
 {
     private readonly ShellHealthCheck _healthCheck = healthCheck ?? new ShellHealthCheck(system);
 
@@ -73,6 +75,14 @@ public sealed class FixPipeline(
         }
 
         output.WriteLine("[3/4] Confirm reset");
+        var confirmed = new ResetConfirmation(output, readLine ?? Console.In.ReadLine, dryRun).Confirm();
+        if (!confirmed)
+        {
+            system.Log("Reset declined by the user");
+            RunState.Clear(system);
+            output.WriteLine("Reset cancelled. Nothing was changed.");
+            return 3;
+        }
 
         output.WriteLine("[4/4] Reset");
         RunState.Clear(system);
