@@ -1,6 +1,9 @@
 using System.Text.RegularExpressions;
+using WinFix.Media;
 using WinFixUsb.System;
 using WinFixUsb.Tests.Disks;
+using WinFixUsb.Tests.Usb;
+using WinFixUsb.Usb;
 
 namespace WinFixUsb.Tests;
 
@@ -167,15 +170,6 @@ public class ProgramTests
     }
 
     [Fact]
-    public async Task Without_dry_run_or_help_nothing_runs_and_the_exit_code_is_2()
-    {
-        var (exit, _, fake) = await RunAsync();
-
-        Assert.Equal(2, exit);
-        Assert.Empty(fake.Calls);
-    }
-
-    [Fact]
     public async Task Dry_run_plan_uses_the_disk_the_user_confirmed()
     {
         var (exit, lines, fake) = await RunAsync("--dry-run");
@@ -225,5 +219,168 @@ public class ProgramTests
 
         Assert.Equal(0, exit);
         Assert.Contains("disk5", output.ToString());
+    }
+
+    private const string Downloads = "/Users/me/Downloads";
+    private const string ToolFolder = "/opt/winfixusb";
+    private const string TempExe = "/tmp/WinFixUsb/WinFix.exe";
+    private const string IsoFile = Downloads + "/Windows11_x64_en-US.iso";
+    private static readonly Uri IsoUrl = new("https://software.download.prss.microsoft.com/dbazure/Win11_English_x64.iso");
+    private static readonly byte[] Payload = [1, 2, 3, 4, 5, 6, 7, 8];
+
+    private sealed class Rig
+    {
+        public FakeMacSystem Fake { get; } = new() { Answers = ["disk4"] };
+
+        public MemoryFiles Files { get; } = new();
+
+        public FakeSource Source { get; set; } = new(new IsoLink(IsoUrl, null));
+
+        public bool ExeOnGitHub { get; set; } = true;
+
+        public bool ExeBesideTool { get; set; }
+
+        public List<string> Requests { get; } = [];
+
+        public List<bool> ErasedBeforeRequest { get; } = [];
+
+        public UsbServices Services()
+        {
+            Fake.FileSizes["/Volumes/WINDOWS_ISO/setup.exe"] = 100;
+            Fake.FileSizes["/Volumes/WINDOWS_ISO/sources/install.wim"] = 1_000_000_000;
+            if (ExeBesideTool)
+            {
+                Fake.FileSizes[ToolFolder + "/WinFix.exe"] = 100;
+            }
+
+            var handler = new FakeHandler(request =>
+                request.RequestUri!.Host.EndsWith("microsoft.com", StringComparison.Ordinal) ? FakeHandler.Bytes(Payload)
+                : ExeOnGitHub ? FakeHandler.Bytes(Payload)
+                : FakeHandler.Status(System.Net.HttpStatusCode.NotFound))
+            {
+                OnRequest = request =>
+                {
+                    Requests.Add(request.RequestUri!.Host);
+                    ErasedBeforeRequest.Add(Fake.Invocations.Any(i => i.Args.Contains("eraseDisk")));
+                },
+            };
+            return new UsbServices
+            {
+                Http = new HttpClient(handler),
+                IsoSource = Source,
+                Files = Files,
+                DownloadsFolder = Downloads,
+                ToolFolder = ToolFolder,
+                TempExe = TempExe,
+                Language = "en-US",
+                Delay = (_, _) => Task.CompletedTask,
+            };
+        }
+    }
+
+    private static async Task<(int Exit, string Text)> RunRealAsync(Rig rig, params string[] args)
+    {
+        var output = new StringWriter();
+        var exit = await Program.RunAsync(args, output, rig.Fake, rig.Services());
+        return (exit, output.ToString());
+    }
+
+    [Fact]
+    public async Task Without_iso_the_Windows_11_x64_ISO_is_downloaded_into_downloads_and_used()
+    {
+        var rig = new Rig();
+
+        var (exit, _) = await RunRealAsync(rig);
+
+        Assert.Equal(0, exit);
+        Assert.Equal(new IsoRequest("11", "x64", "en-US"), Assert.Single(rig.Source.Requests));
+        Assert.Equal(Payload, rig.Files.Data[IsoFile].ToArray());
+        Assert.Contains(rig.Fake.Invocations, i => i.File == "hdiutil" && i.Args.Contains(IsoFile));
+    }
+
+    [Fact]
+    public async Task The_download_finishes_before_anything_runs_on_the_mac_and_before_the_erase()
+    {
+        var rig = new Rig();
+
+        await RunRealAsync(rig);
+
+        Assert.NotEmpty(rig.Requests);
+        Assert.All(rig.ErasedBeforeRequest, erased => Assert.False(erased));
+        Assert.Contains(rig.Fake.Invocations, i => i.Args.Contains("eraseDisk"));
+    }
+
+    [Fact]
+    public async Task A_failed_download_exits_1_with_the_manual_page_and_runs_nothing()
+    {
+        var rig = new Rig { Source = new FakeSource(null) };
+
+        var (exit, text) = await RunRealAsync(rig);
+
+        Assert.Equal(1, exit);
+        Assert.Contains(IsoProvider.ManualPage, text);
+        Assert.Empty(rig.Fake.Calls);
+    }
+
+    [Fact]
+    public async Task With_iso_nothing_is_downloaded_for_the_iso()
+    {
+        var rig = new Rig();
+
+        var (exit, _) = await RunRealAsync(rig, "--iso", "/tmp/Win.iso");
+
+        Assert.Equal(0, exit);
+        Assert.Empty(rig.Source.Requests);
+        Assert.DoesNotContain("software.download.prss.microsoft.com", rig.Requests);
+    }
+
+    [Fact]
+    public async Task WinFix_exe_from_beside_the_tool_is_copied_to_the_usb_root()
+    {
+        var rig = new Rig { ExeBesideTool = true };
+
+        var (exit, _) = await RunRealAsync(rig);
+
+        Assert.Equal(0, exit);
+        Assert.Contains(rig.Fake.Invocations, i => i.File == "cp" && i.Args.SequenceEqual(["--", ToolFolder + "/WinFix.exe", "/Volumes/WINFIX/WinFix.exe"]));
+        Assert.DoesNotContain("github.com", rig.Requests);
+    }
+
+    [Fact]
+    public async Task WinFix_exe_is_downloaded_before_the_erase_copied_and_the_temp_file_removed()
+    {
+        var rig = new Rig();
+
+        var (exit, _) = await RunRealAsync(rig, "--iso", "/tmp/Win.iso");
+
+        Assert.Equal(0, exit);
+        Assert.Contains("github.com", rig.Requests);
+        Assert.All(rig.ErasedBeforeRequest, erased => Assert.False(erased));
+        Assert.Contains(rig.Fake.Invocations, i => i.File == "cp" && i.Args.SequenceEqual(["--", TempExe, "/Volumes/WINFIX/WinFix.exe"]));
+        Assert.DoesNotContain(TempExe, rig.Files.Data.Keys);
+    }
+
+    [Fact]
+    public async Task When_WinFix_exe_cannot_be_found_or_downloaded_the_usb_is_still_finished_with_a_warning()
+    {
+        var rig = new Rig { ExeOnGitHub = false };
+
+        var (exit, text) = await RunRealAsync(rig, "--iso", "/tmp/Win.iso");
+
+        Assert.Equal(0, exit);
+        Assert.Contains("Warning", text);
+        Assert.DoesNotContain(rig.Fake.Invocations, i => i.File == "cp" && i.Args.Any(a => a.EndsWith("WinFix.exe", StringComparison.Ordinal)));
+        Assert.Contains(rig.Fake.Invocations, i => i.File == "diskutil" && i.Args.Contains("eject"));
+    }
+
+    [Fact]
+    public async Task The_closing_message_tells_the_user_to_boot_from_the_usb_and_run_WinFix_exe_if_windows_starts_again()
+    {
+        var rig = new Rig { ExeBesideTool = true };
+
+        var (_, text) = await RunRealAsync(rig, "--iso", "/tmp/Win.iso");
+
+        Assert.Contains("boot the PC from the USB", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("If Windows starts again, run WinFix.exe from the USB", text);
     }
 }

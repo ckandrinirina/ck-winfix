@@ -386,4 +386,74 @@ public class UsbWriterTests
         var stringArguments = new global::System.Text.RegularExpressions.Regex(@"\.Arguments\s*=[^=]|new\s+ProcessStartInfo\s*\([^()]*,");
         Assert.DoesNotContain(sources, f => stringArguments.IsMatch(f.Value));
     }
+
+    private const string ExeSource = "/opt/winfixusb/WinFix.exe";
+    private const string ExeTarget = "RunCommand cp -- /opt/winfixusb/WinFix.exe /Volumes/WINFIX/WinFix.exe";
+
+    private static async Task<(int Exit, string Text, FakeMacSystem Fake)> WriteWithExeAsync(FakeMacSystem fake, string? exe = ExeSource)
+    {
+        var output = new StringWriter();
+        var exit = await UsbWriter.WriteAsync(fake, Iso, null, output, CancellationToken.None, exe);
+        return (exit, output.ToString(), fake);
+    }
+
+    [Fact]
+    public async Task WinFix_exe_is_copied_to_the_usb_root_after_the_windows_files_and_before_the_unmount()
+    {
+        var (exit, _, fake) = await WriteWithExeAsync(IsoFake());
+
+        Assert.Equal(0, exit);
+        var commands = Commands(fake).ToList();
+        var copy = commands.IndexOf(ExeTarget);
+        Assert.True(copy > commands.IndexOf(HappyCommands[5]), "after install.wim");
+        Assert.True(copy < commands.IndexOf("RunCommand hdiutil detach /Volumes/WINDOWS_ISO"), "before the unmount");
+        Assert.Contains(fake.Invocations, i => i.File == "cp" && i.Args.SequenceEqual(["--", ExeSource, "/Volumes/WINFIX/WinFix.exe"]));
+    }
+
+    [Fact]
+    public async Task A_failed_WinFix_exe_copy_warns_and_still_finishes_the_usb()
+    {
+        var fake = IsoFake();
+        fake.FailingCommands.Add("cp -- " + ExeSource);
+
+        var (exit, text, _) = await WriteWithExeAsync(fake);
+
+        Assert.Equal(0, exit);
+        Assert.Contains("Warning", text);
+        Assert.Contains("WinFix.exe", text);
+        Assert.Contains("RunCommand diskutil eject disk4", Commands(fake));
+    }
+
+    [Fact]
+    public async Task Without_a_WinFix_exe_nothing_is_copied_and_the_usb_is_still_finished()
+    {
+        var (exit, text, fake) = await WriteWithExeAsync(IsoFake(), exe: null);
+
+        Assert.Equal(0, exit);
+        Assert.DoesNotContain(Commands(fake), c => c.Contains("WinFix.exe"));
+        Assert.Contains("not on the USB", text);
+        Assert.Contains("RunCommand diskutil eject disk4", Commands(fake));
+    }
+
+    [Fact]
+    public async Task The_final_message_says_to_boot_from_the_usb_and_run_WinFix_exe_if_windows_starts_again()
+    {
+        var (_, text, _) = await WriteWithExeAsync(IsoFake());
+
+        var last = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[^1];
+        Assert.Contains("boot the PC from the USB", last, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("If Windows starts again, run WinFix.exe from the USB", last);
+    }
+
+    [Fact]
+    public async Task A_failed_run_prints_no_final_message()
+    {
+        var fake = IsoFake();
+        fake.FailingCommands.Add("diskutil eraseDisk");
+
+        var (exit, text, _) = await WriteWithExeAsync(fake);
+
+        Assert.Equal(1, exit);
+        Assert.DoesNotContain("boot the PC", text, StringComparison.OrdinalIgnoreCase);
+    }
 }
