@@ -15,6 +15,11 @@ public interface ISystem
 
     void KillProcess(int processId);
 
+    void StartProcess(string fileName);
+
+    /// <summary>Returns whether the key existed; a missing key is not an error.</summary>
+    bool DeleteRegistryKey(string keyPath);
+
     bool FindWindow(string className);
 
     /// <summary>Waits without blocking a thread; the fake returns at once so tests never sleep.</summary>

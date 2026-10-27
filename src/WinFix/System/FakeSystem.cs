@@ -9,6 +9,7 @@ public sealed class FakeSystem : ISystem
     private readonly List<string> _logs = [];
     private int _explorerSample;
     private bool _repaired;
+    private bool _fixedByCall;
 
     public IReadOnlyList<string> Calls => _calls;
 
@@ -18,6 +19,15 @@ public sealed class FakeSystem : ISystem
 
     public bool ShellHealthy { get; init; }
 
+    /// <summary>Exit code every command returns.</summary>
+    public int CommandExitCode { get; init; }
+
+    /// <summary>Registry keys that exist; DeleteRegistryKey reports whether it removed one.</summary>
+    public IReadOnlyCollection<string> ExistingRegistryKeys { get; init; } = [];
+
+    /// <summary>The taskbar exists once a recorded call starts with this text.</summary>
+    public string? FixedByCall { get; init; }
+
     /// <summary>Once any command has run, the taskbar exists.</summary>
     public bool RepairFixesShell { get; init; }
 
@@ -26,23 +36,23 @@ public sealed class FakeSystem : ISystem
 
     public Task<CommandResult> RunCommandAsync(string fileName, string arguments, CancellationToken ct)
     {
-        _calls.Add($"RunCommand {fileName} {arguments}".TrimEnd());
+        Record($"RunCommand {fileName} {arguments}".TrimEnd());
         _repaired = true;
-        return Task.FromResult(new CommandResult(0, string.Empty));
+        return Task.FromResult(new CommandResult(CommandExitCode, string.Empty));
     }
 
     public string? ReadRegistryValue(string keyPath, string valueName)
     {
-        _calls.Add($"ReadRegistry {keyPath} {valueName}");
+        Record($"ReadRegistry {keyPath} {valueName}");
         return null;
     }
 
     public void WriteRegistryValue(string keyPath, string valueName, string value) =>
-        _calls.Add($"WriteRegistry {keyPath} {valueName}={value}");
+        Record($"WriteRegistry {keyPath} {valueName}={value}");
 
     public IReadOnlyList<int> FindProcesses(string name)
     {
-        _calls.Add($"FindProcesses {name}");
+        Record($"FindProcesses {name}");
         if (!name.Equals(ExplorerName, StringComparison.OrdinalIgnoreCase) || ExplorerProcessIdSamples.Count == 0)
         {
             return [];
@@ -51,12 +61,29 @@ public sealed class FakeSystem : ISystem
         return ExplorerProcessIdSamples[Math.Min(_explorerSample++, ExplorerProcessIdSamples.Count - 1)];
     }
 
-    public void KillProcess(int processId) => _calls.Add($"KillProcess {processId}");
+    public void KillProcess(int processId) => Record($"KillProcess {processId}");
+
+    public void StartProcess(string fileName) => Record($"StartProcess {fileName}");
+
+    public bool DeleteRegistryKey(string keyPath)
+    {
+        Record($"DeleteRegistryKey {keyPath}");
+        return ExistingRegistryKeys.Contains(keyPath);
+    }
 
     public bool FindWindow(string className)
     {
-        _calls.Add($"FindWindow {className}");
-        return ShellHealthy || (RepairFixesShell && _repaired);
+        Record($"FindWindow {className}");
+        return ShellHealthy || _fixedByCall || (RepairFixesShell && _repaired);
+    }
+
+    private void Record(string call)
+    {
+        _calls.Add(call);
+        if (FixedByCall is not null && call.StartsWith(FixedByCall, StringComparison.Ordinal))
+        {
+            _fixedByCall = true;
+        }
     }
 
     public Task DelayAsync(TimeSpan duration, CancellationToken ct)
@@ -69,7 +96,7 @@ public sealed class FakeSystem : ISystem
 
     public Task RebootAsync(CancellationToken ct)
     {
-        _calls.Add("Reboot");
+        Record("Reboot");
         return Task.CompletedTask;
     }
 }

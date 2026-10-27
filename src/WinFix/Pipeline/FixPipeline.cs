@@ -1,12 +1,20 @@
 using WinFix.Diagnose;
+using WinFix.Repairs;
 using WinFix.System;
 
 namespace WinFix.Pipeline;
 
-/// <summary>Diagnose, then repairs, reset confirmation and reset; repairs and reset are placeholders for now.</summary>
-public sealed class FixPipeline(ISystem system, TextWriter output, ShellHealthCheck? healthCheck = null)
+/// <summary>Diagnose, repairs cheapest-first (health check after each), reset confirmation, reset; reset is a placeholder.</summary>
+public sealed class FixPipeline(
+    ISystem system,
+    TextWriter output,
+    ShellHealthCheck? healthCheck = null,
+    IReadOnlyList<IRepairStep>? steps = null)
 {
     private readonly ShellHealthCheck _healthCheck = healthCheck ?? new ShellHealthCheck(system);
+
+    private readonly IReadOnlyList<IRepairStep> _steps =
+        steps ?? [new RestartExplorerStep(), new ClearIrisServiceStep(), new ReRegisterShellAppsStep()];
 
     public async Task<int> RunAsync(CancellationToken ct)
     {
@@ -20,14 +28,18 @@ public sealed class FixPipeline(ISystem system, TextWriter output, ShellHealthCh
         }
 
         output.WriteLine("[2/4] Repairs");
-        await system.RunCommandAsync("sfc.exe", "/scannow", ct);
-
-        var recheck = await _healthCheck.CheckAsync(ct);
-        output.WriteLine(recheck.Reason);
-        if (recheck.Healthy)
+        foreach (var step in _steps)
         {
-            output.WriteLine("Shell is healthy after repair — nothing more to do");
-            return 0;
+            await RunStepAsync(step, ct);
+            var health = await _healthCheck.CheckAsync(ct);
+            output.WriteLine(health.Reason);
+            if (health.Healthy)
+            {
+                var fixedBy = $"Fixed by {step.Name}";
+                system.Log(fixedBy);
+                output.WriteLine(fixedBy);
+                return 0;
+            }
         }
 
         output.WriteLine("[3/4] Confirm reset");
@@ -35,5 +47,21 @@ public sealed class FixPipeline(ISystem system, TextWriter output, ShellHealthCh
         output.WriteLine("[4/4] Reset");
         await system.RebootAsync(ct);
         return 0;
+    }
+
+    private async Task RunStepAsync(IRepairStep step, CancellationToken ct)
+    {
+        output.WriteLine($"Running: {step.Name}");
+        try
+        {
+            var result = await step.RunAsync(system, ct);
+            system.Log($"Step {step.Name}: exit {result.ExitCode} — {result.Message}");
+            output.WriteLine(result.Succeeded ? result.Message : $"{step.Name} failed (exit {result.ExitCode}). {result.Message}");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            system.Log($"Step {step.Name} threw: {ex.Message}");
+            output.WriteLine($"{step.Name} failed. {ex.Message}");
+        }
     }
 }
