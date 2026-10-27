@@ -92,8 +92,8 @@ public class ReleaseWorkflowTests
     {
         var build = Job(Workflow(), "build");
 
-        Assert.Matches(@"(?s)rid:\s*osx-arm64.*?os:\s*macos-latest", build);
-        Assert.Matches(@"(?s)rid:\s*osx-x64.*?os:\s*macos-latest", build);
+        Assert.Matches(@"os:\s*macos-latest\s*\n\s*rid:\s*osx-arm64", build);
+        Assert.Matches(@"os:\s*macos-latest\s*\n\s*rid:\s*osx-x64", build);
         Assert.Contains("runs-on: ${{ matrix.os }}", build);
     }
 
@@ -115,7 +115,7 @@ public class ReleaseWorkflowTests
     {
         var workflow = Workflow();
 
-        Assert.Equal(1, Regex.Matches(workflow, @"contents:\s*write").Count);
+        Assert.Single(Regex.Matches(workflow, @"contents:\s*write"));
         Assert.DoesNotContain("contents: write", Job(workflow, "test"));
         Assert.DoesNotContain("contents: write", Job(workflow, "build"));
     }
