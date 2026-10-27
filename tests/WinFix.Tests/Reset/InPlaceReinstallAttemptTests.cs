@@ -111,14 +111,15 @@ public class InPlaceReinstallAttemptTests
     }
 
     [Fact]
-    public void The_default_chain_starts_with_the_in_place_reinstall_then_the_keep_files_reset()
+    public void The_default_chain_starts_with_the_in_place_reinstall_then_the_keep_files_reset_then_boot_to_winre()
     {
-        var attempts = ResetChain.DefaultAttempts(Provides(null), Provides(null));
+        var attempts = ResetChain.DefaultAttempts(Provides(null), Provides(null), new StringWriter());
 
         Assert.Collection(
             attempts,
             first => Assert.IsType<InPlaceReinstallAttempt>(first),
-            second => Assert.IsType<MdmKeepFilesReset>(second));
+            second => Assert.IsType<MdmKeepFilesReset>(second),
+            third => Assert.IsType<BootToWinReAttempt>(third));
     }
 
     [Fact]
