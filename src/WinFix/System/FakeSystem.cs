@@ -35,6 +35,9 @@ public sealed class FakeSystem : ISystem
     /// <summary>Output every command returns.</summary>
     public string CommandOutput { get; init; } = string.Empty;
 
+    /// <summary>When set, decides each command's result from (fileName, arguments) instead of CommandExitCode/CommandOutput.</summary>
+    public Func<string, string, CommandResult>? CommandResponder { get; init; }
+
     /// <summary>Registry keys that exist; DeleteRegistryKey reports whether it removed one.</summary>
     public IReadOnlyCollection<string> ExistingRegistryKeys { get; init; } = [];
 
@@ -51,7 +54,7 @@ public sealed class FakeSystem : ISystem
     {
         Record($"RunCommand {fileName} {arguments}".TrimEnd());
         _repaired = true;
-        return Task.FromResult(new CommandResult(CommandExitCode, CommandOutput));
+        return Task.FromResult(CommandResponder?.Invoke(fileName, arguments) ?? new CommandResult(CommandExitCode, CommandOutput));
     }
 
     public string? ReadRegistryValue(string keyPath, string valueName)
