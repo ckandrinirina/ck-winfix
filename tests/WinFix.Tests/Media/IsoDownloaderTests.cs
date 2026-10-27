@@ -46,7 +46,7 @@ public class IsoDownloaderTests
 
         public int Dismounts => Commands.Count(c => c.Contains("Dismount-DiskImage", StringComparison.Ordinal));
 
-        public FakeSystem Build_(string windowsDirectory = @"C:\Windows")
+        public FakeSystem Create(string windowsDirectory = @"C:\Windows")
         {
             var fake = new FakeSystem { CommandResponder = Respond, WindowsDirectory = windowsDirectory };
             fake.RegistryValues[(Cpu, "PROCESSOR_ARCHITECTURE")] = "AMD64";
@@ -218,7 +218,7 @@ public class IsoDownloaderTests
         var pc = new Pc();
         var rig = Rig((_, _) => Full(Payload));
 
-        await rig.Downloader.DownloadAsync(pc.Build_(), CancellationToken.None);
+        await rig.Downloader.DownloadAsync(pc.Create(), CancellationToken.None);
 
         Assert.Equal(new IsoRequest("11", "x64", "en-US"), Assert.Single(rig.Source.Requests));
     }
@@ -229,7 +229,7 @@ public class IsoDownloaderTests
         var pc = new Pc { Build = "19045" };
         var rig = Rig((_, _) => Full(Payload));
 
-        await rig.Downloader.DownloadAsync(pc.Build_(), CancellationToken.None);
+        await rig.Downloader.DownloadAsync(pc.Create(), CancellationToken.None);
 
         Assert.Equal("10", Assert.Single(rig.Source.Requests).WindowsVersion);
     }
@@ -238,7 +238,7 @@ public class IsoDownloaderTests
     public async Task An_unreadable_installed_Windows_asks_nothing_and_fails()
     {
         var pc = new Pc();
-        var system = pc.Build_();
+        var system = pc.Create();
         system.RegistryValues.Remove((Nt, "CurrentBuild"));
         var rig = Rig((_, _) => Full(Payload));
 
@@ -254,7 +254,7 @@ public class IsoDownloaderTests
     public async Task Less_than_8_GB_free_logs_the_shortfall_and_downloads_nothing()
     {
         var pc = new Pc { FreeBytes = EightGiB - 1 };
-        var system = pc.Build_();
+        var system = pc.Create();
         var rig = Rig((_, _) => Full(Payload));
 
         var media = await rig.Downloader.DownloadAsync(system, CancellationToken.None);
@@ -271,7 +271,7 @@ public class IsoDownloaderTests
         var pc = new Pc { FreeBytes = EightGiB };
         var rig = Rig((_, _) => Full(Payload));
 
-        var media = await rig.Downloader.DownloadAsync(pc.Build_(), CancellationToken.None);
+        var media = await rig.Downloader.DownloadAsync(pc.Create(), CancellationToken.None);
 
         Assert.NotNull(media);
         Assert.Single(rig.Handler.Requests);
@@ -283,7 +283,7 @@ public class IsoDownloaderTests
         var pc = new Pc();
         var system = new FakeSystem
         {
-            CommandResponder = (f, a) => a.Contains("Get-PSDrive", StringComparison.Ordinal) ? new(1, "boom") : pc.Build_().CommandResponder!(f, a),
+            CommandResponder = (f, a) => a.Contains("Get-PSDrive", StringComparison.Ordinal) ? new(1, "boom") : pc.Create().CommandResponder!(f, a),
         };
         system.RegistryValues[(Cpu, "PROCESSOR_ARCHITECTURE")] = "AMD64";
         system.RegistryValues[(Nt, "EditionID")] = "Professional";
@@ -299,7 +299,7 @@ public class IsoDownloaderTests
     public async Task A_target_that_is_not_a_drive_letter_path_is_refused()
     {
         var pc = new Pc();
-        var system = pc.Build_(@"\\server\share'; calc");
+        var system = pc.Create(@"\\server\share'; calc");
         var rig = Rig((_, _) => Full(Payload));
 
         Assert.Null(await rig.Downloader.DownloadAsync(system, CancellationToken.None));
@@ -313,7 +313,7 @@ public class IsoDownloaderTests
         var pc = new Pc();
         var rig = Rig((_, _) => Full(Payload));
 
-        var media = await rig.Downloader.DownloadAsync(pc.Build_(), CancellationToken.None);
+        var media = await rig.Downloader.DownloadAsync(pc.Create(), CancellationToken.None);
 
         Assert.NotNull(media);
         Assert.Equal(IsoPath, media.IsoPath);
@@ -331,7 +331,7 @@ public class IsoDownloaderTests
         var pc = new Pc();
         var rig = Rig((_, n) => n == 0 ? Full(Payload, 100, failAfter: 300) : Range(Payload, 300));
 
-        var media = await rig.Downloader.DownloadAsync(pc.Build_(), CancellationToken.None);
+        var media = await rig.Downloader.DownloadAsync(pc.Create(), CancellationToken.None);
 
         Assert.NotNull(media);
         Assert.Equal([null, 300L], rig.Handler.Requests.Select(r => r.RangeFrom));
@@ -345,7 +345,7 @@ public class IsoDownloaderTests
         var rig = Rig((_, _) => Range(Payload, 400));
         rig.Files.Seed(PartPath, Payload[..400]);
 
-        var media = await rig.Downloader.DownloadAsync(pc.Build_(), CancellationToken.None);
+        var media = await rig.Downloader.DownloadAsync(pc.Create(), CancellationToken.None);
 
         Assert.NotNull(media);
         Assert.Equal(400L, rig.Handler.Requests[0].RangeFrom);
@@ -359,7 +359,7 @@ public class IsoDownloaderTests
         var rig = Rig((_, _) => Full(Payload));
         rig.Files.Seed(PartPath, [9, 9, 9, 9]);
 
-        var media = await rig.Downloader.DownloadAsync(pc.Build_(), CancellationToken.None);
+        var media = await rig.Downloader.DownloadAsync(pc.Create(), CancellationToken.None);
 
         Assert.NotNull(media);
         Assert.Equal(4L, rig.Handler.Requests[0].RangeFrom);
@@ -373,7 +373,7 @@ public class IsoDownloaderTests
         var rig = Rig((_, n) => n == 0 ? Range(Payload, 10) : Full(Payload));
         rig.Files.Seed(PartPath, Payload[..400]);
 
-        var media = await rig.Downloader.DownloadAsync(pc.Build_(), CancellationToken.None);
+        var media = await rig.Downloader.DownloadAsync(pc.Create(), CancellationToken.None);
 
         Assert.NotNull(media);
         Assert.Equal(Payload, rig.Files.Data[IsoPath].ToArray());
@@ -386,7 +386,7 @@ public class IsoDownloaderTests
         var rig = Rig((_, n) => n == 0 ? new HttpResponseMessage(HttpStatusCode.RequestedRangeNotSatisfiable) : Full(Payload));
         rig.Files.Seed(PartPath, [1, 2, 3]);
 
-        var media = await rig.Downloader.DownloadAsync(pc.Build_(), CancellationToken.None);
+        var media = await rig.Downloader.DownloadAsync(pc.Create(), CancellationToken.None);
 
         Assert.NotNull(media);
         Assert.Equal([3L, null], rig.Handler.Requests.Select(r => r.RangeFrom));
@@ -397,7 +397,7 @@ public class IsoDownloaderTests
     public async Task A_download_that_keeps_breaking_gives_up_and_keeps_the_partial_file()
     {
         var pc = new Pc();
-        var system = pc.Build_();
+        var system = pc.Create();
         var rig = Rig((_, n) => n == 0 ? Full(Payload, 100, failAfter: 200) : Range(Payload, 200, 100, failAfter: 0));
 
         var media = await rig.Downloader.DownloadAsync(system, CancellationToken.None);
@@ -414,7 +414,7 @@ public class IsoDownloaderTests
         var pc = new Pc();
         var rig = Rig((_, _) => Full(Payload, chunk: 7));
 
-        await rig.Downloader.DownloadAsync(pc.Build_(), CancellationToken.None);
+        await rig.Downloader.DownloadAsync(pc.Create(), CancellationToken.None);
 
         var lines = rig.Output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(l => l.EndsWith('%')).ToList();
@@ -428,7 +428,7 @@ public class IsoDownloaderTests
     public async Task A_downloaded_ISO_that_does_not_match_is_dismounted_deleted_and_refused()
     {
         var pc = new Pc { Wim = Dism("x64", "Professional", "10.0.22631.1", "fr-FR") };
-        var system = pc.Build_();
+        var system = pc.Create();
         var rig = Rig((_, _) => Full(Payload));
 
         var media = await rig.Downloader.DownloadAsync(system, CancellationToken.None);
@@ -445,7 +445,7 @@ public class IsoDownloaderTests
         var pc = new Pc();
         var system = new FakeSystem
         {
-            CommandResponder = (f, a) => a.Contains("Mount-DiskImage", StringComparison.Ordinal) ? new(1, "") : pc.Build_().CommandResponder!(f, a),
+            CommandResponder = (f, a) => a.Contains("Mount-DiskImage", StringComparison.Ordinal) ? new(1, "") : pc.Create().CommandResponder!(f, a),
         };
         system.RegistryValues[(Cpu, "PROCESSOR_ARCHITECTURE")] = "AMD64";
         system.RegistryValues[(Nt, "EditionID")] = "Professional";
@@ -463,14 +463,14 @@ public class IsoDownloaderTests
         var hash = Convert.ToHexString(SHA256.HashData(Payload)).ToLowerInvariant();
         var rig = Rig((_, _) => Full(Payload), new IsoLink(TrustedUrl, hash));
 
-        Assert.NotNull(await rig.Downloader.DownloadAsync(pc.Build_(), CancellationToken.None));
+        Assert.NotNull(await rig.Downloader.DownloadAsync(pc.Create(), CancellationToken.None));
     }
 
     [Fact]
     public async Task A_SHA256_mismatch_discards_the_file()
     {
         var pc = new Pc();
-        var system = pc.Build_();
+        var system = pc.Create();
         var rig = Rig((_, _) => Full(Payload), new IsoLink(TrustedUrl, new string('a', 64)));
 
         Assert.Null(await rig.Downloader.DownloadAsync(system, CancellationToken.None));
@@ -487,7 +487,7 @@ public class IsoDownloaderTests
     public async Task A_link_that_is_not_https_on_a_Microsoft_host_is_never_fetched(string url)
     {
         var pc = new Pc();
-        var system = pc.Build_();
+        var system = pc.Create();
         var rig = Rig((_, _) => Full(Payload), new IsoLink(new Uri(url), null));
 
         Assert.Null(await rig.Downloader.DownloadAsync(system, CancellationToken.None));
@@ -499,7 +499,7 @@ public class IsoDownloaderTests
     public async Task A_redirect_to_a_foreign_host_is_refused()
     {
         var pc = new Pc();
-        var system = pc.Build_();
+        var system = pc.Create();
         var files = new MemoryFiles();
         var downloader = new IsoDownloader(new FakeSource(new IsoLink(TrustedUrl, null)), new HttpClient(new RedirectingHandler()), files, new StringWriter());
 
@@ -521,7 +521,7 @@ public class IsoDownloaderTests
     public async Task No_link_from_the_source_is_logged_and_fails()
     {
         var pc = new Pc();
-        var system = pc.Build_();
+        var system = pc.Create();
         var handler = new FakeHandler((_, _) => Full(Payload));
         var source = new FakeSource(null);
         var downloader = new IsoDownloader(source, new HttpClient(handler), new MemoryFiles(), new StringWriter());
@@ -535,7 +535,7 @@ public class IsoDownloaderTests
     public async Task A_source_that_throws_is_logged_and_the_chain_can_move_on()
     {
         var pc = new Pc();
-        var system = pc.Build_();
+        var system = pc.Create();
         var rig = Rig((_, _) => Full(Payload), sourceFailure: new HttpRequestException("no network"));
 
         Assert.Null(await rig.Downloader.DownloadAsync(system, CancellationToken.None));
@@ -546,7 +546,7 @@ public class IsoDownloaderTests
     public async Task A_server_error_is_logged_and_fails()
     {
         var pc = new Pc();
-        var system = pc.Build_();
+        var system = pc.Create();
         var rig = Rig((_, _) => new HttpResponseMessage(HttpStatusCode.InternalServerError));
 
         Assert.Null(await rig.Downloader.DownloadAsync(system, CancellationToken.None));
@@ -557,7 +557,7 @@ public class IsoDownloaderTests
     public async Task A_network_failure_on_the_request_is_logged_and_fails()
     {
         var pc = new Pc();
-        var system = pc.Build_();
+        var system = pc.Create();
         var rig = Rig((_, _) => throw new HttpRequestException("name not resolved"));
 
         Assert.Null(await rig.Downloader.DownloadAsync(system, CancellationToken.None));
@@ -572,6 +572,6 @@ public class IsoDownloaderTests
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => rig.Downloader.DownloadAsync(pc.Build_(), cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => rig.Downloader.DownloadAsync(pc.Create(), cts.Token));
     }
 }

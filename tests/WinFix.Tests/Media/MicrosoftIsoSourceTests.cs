@@ -93,7 +93,7 @@ public class MicrosoftIsoSourceTests
             api.Calls.Select(c => c.AbsolutePath));
         Assert.All(api.Calls, c => Assert.Equal("https", c.Scheme));
         Assert.All(api.Calls, c => Assert.EndsWith(".microsoft.com", c.Host, StringComparison.Ordinal));
-        var session = System.Web.HttpUtility.ParseQueryString(api.Calls[0].Query)["session_id"];
+        var session = global::System.Web.HttpUtility.ParseQueryString(api.Calls[0].Query)["session_id"];
         Assert.True(Guid.TryParse(session, out _));
         Assert.Contains("sessionID=" + session, api.Calls[2].Query, StringComparison.Ordinal);
         Assert.Contains("productEditionId=2618", api.Calls[1].Query, StringComparison.OrdinalIgnoreCase);
