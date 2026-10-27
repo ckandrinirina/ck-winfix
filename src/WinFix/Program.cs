@@ -7,7 +7,7 @@ public static class Program
 {
     public static Task<int> Main(string[] args) => RunAsync(args, Console.Out);
 
-    public static async Task<int> RunAsync(string[] args, TextWriter output, Func<bool>? isAdmin = null)
+    public static async Task<int> RunAsync(string[] args, TextWriter output, Func<bool>? isAdmin = null, ISystem? system = null)
     {
         if (!args.Contains("--dry-run"))
         {
@@ -20,6 +20,6 @@ public static class Program
             return 2;
         }
 
-        return await new FixPipeline(new FakeSystem(), output).RunAsync(CancellationToken.None);
+        return await new FixPipeline(system ?? new FakeSystem(), output).RunAsync(CancellationToken.None, args.Contains("--resume"));
     }
 }

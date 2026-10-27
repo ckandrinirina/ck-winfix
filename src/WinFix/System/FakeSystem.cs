@@ -15,6 +15,14 @@ public sealed class FakeSystem : ISystem
 
     public IReadOnlyList<string> Logs => _logs;
 
+    /// <summary>In-memory file system keyed by path.</summary>
+    public Dictionary<string, string> Files { get; } = [];
+
+    /// <summary>In-memory registry values keyed by (key path, value name).</summary>
+    public Dictionary<(string Key, string Name), string> RegistryValues { get; } = [];
+
+    public string ExecutablePath { get; init; } = @"C:\WinFix\WinFix.exe";
+
     public TimeSpan TotalDelay { get; private set; }
 
     public bool ShellHealthy { get; init; }
@@ -44,11 +52,38 @@ public sealed class FakeSystem : ISystem
     public string? ReadRegistryValue(string keyPath, string valueName)
     {
         Record($"ReadRegistry {keyPath} {valueName}");
-        return null;
+        return RegistryValues.GetValueOrDefault((keyPath, valueName));
     }
 
-    public void WriteRegistryValue(string keyPath, string valueName, string value) =>
+    public void WriteRegistryValue(string keyPath, string valueName, string value)
+    {
         Record($"WriteRegistry {keyPath} {valueName}={value}");
+        RegistryValues[(keyPath, valueName)] = value;
+    }
+
+    public void DeleteRegistryValue(string keyPath, string valueName)
+    {
+        Record($"DeleteRegistryValue {keyPath} {valueName}");
+        RegistryValues.Remove((keyPath, valueName));
+    }
+
+    public string? ReadFile(string path)
+    {
+        Record($"ReadFile {path}");
+        return Files.GetValueOrDefault(path);
+    }
+
+    public void WriteFile(string path, string content)
+    {
+        Record($"WriteFile {path}");
+        Files[path] = content;
+    }
+
+    public void DeleteFile(string path)
+    {
+        Record($"DeleteFile {path}");
+        Files.Remove(path);
+    }
 
     public IReadOnlyList<int> FindProcesses(string name)
     {

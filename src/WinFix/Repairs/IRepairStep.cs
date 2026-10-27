@@ -12,5 +12,8 @@ public interface IRepairStep
 {
     string Name { get; }
 
+    /// <summary>True when the repair only takes effect after a restart; the pipeline saves progress first.</summary>
+    bool NeedsReboot => false;
+
     Task<StepResult> RunAsync(ISystem system, CancellationToken ct);
 }

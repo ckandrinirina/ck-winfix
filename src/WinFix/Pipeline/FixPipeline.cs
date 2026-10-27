@@ -16,21 +16,36 @@ public sealed class FixPipeline(
     private readonly IReadOnlyList<IRepairStep> _steps =
         steps ?? [new RestartExplorerStep(), new ClearIrisServiceStep(), new ReRegisterShellAppsStep()];
 
-    public async Task<int> RunAsync(CancellationToken ct)
+    public async Task<int> RunAsync(CancellationToken ct, bool resume = false)
     {
+        var firstStage = resume ? RunState.Load(system)?.NextStage ?? 0 : 0;
         output.WriteLine("[1/4] Diagnose");
         var diagnosis = await _healthCheck.CheckAsync(ct);
         output.WriteLine(diagnosis.Reason);
         if (diagnosis.Healthy)
         {
             output.WriteLine("Shell is healthy — nothing to do");
+            RunState.Clear(system);
             return 0;
         }
 
         output.WriteLine("[2/4] Repairs");
-        foreach (var step in _steps)
+        for (var index = firstStage; index < _steps.Count; index++)
         {
+            var step = _steps[index];
+            if (step.NeedsReboot)
+            {
+                new RunState(index + 1).Save(system);
+            }
+
             await RunStepAsync(step, ct);
+            if (step.NeedsReboot)
+            {
+                output.WriteLine("Restarting to finish this repair. WinFix will continue by itself.");
+                await system.RebootAsync(ct);
+                return 0;
+            }
+
             var health = await _healthCheck.CheckAsync(ct);
             output.WriteLine(health.Reason);
             if (health.Healthy)
@@ -38,6 +53,7 @@ public sealed class FixPipeline(
                 var fixedBy = $"Fixed by {step.Name}";
                 system.Log(fixedBy);
                 output.WriteLine(fixedBy);
+                RunState.Clear(system);
                 return 0;
             }
         }
@@ -45,6 +61,7 @@ public sealed class FixPipeline(
         output.WriteLine("[3/4] Confirm reset");
 
         output.WriteLine("[4/4] Reset");
+        RunState.Clear(system);
         await system.RebootAsync(ct);
         return 0;
     }

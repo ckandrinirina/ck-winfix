@@ -34,12 +34,11 @@ public class RunStateTests
         fake.Calls.ToList().FindIndex(c => c.StartsWith(prefix, StringComparison.Ordinal));
 
     [Fact]
-    public async Task Existing_steps_do_not_need_a_reboot()
+    public void Existing_steps_do_not_need_a_reboot()
     {
-        Assert.False(new RestartExplorerStep().NeedsReboot);
-        Assert.False(new ClearIrisServiceStep().NeedsReboot);
-        Assert.False(new ReRegisterShellAppsStep().NeedsReboot);
-        await Task.CompletedTask;
+        IRepairStep[] steps = [new RestartExplorerStep(), new ClearIrisServiceStep(), new ReRegisterShellAppsStep()];
+
+        Assert.All(steps, step => Assert.False(step.NeedsReboot));
     }
 
     [Fact]
