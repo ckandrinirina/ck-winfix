@@ -40,6 +40,49 @@ public class FixPipelineTests
     }
 
     [Fact]
+    public async Task Diagnose_prints_the_reason_and_writes_it_to_the_log()
+    {
+        var (_, output, fake) = await RunAsync(shellHealthy: false);
+
+        Assert.Contains("Shell_TrayWnd", output);
+        Assert.Contains(fake.Logs, l => l.Contains("Shell_TrayWnd"));
+    }
+
+    [Fact]
+    public async Task Healthy_diagnosis_reason_is_printed_and_logged()
+    {
+        var (_, output, fake) = await RunAsync(shellHealthy: true);
+
+        Assert.Contains("taskbar", output, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEmpty(fake.Logs);
+    }
+
+    [Fact]
+    public async Task Shell_that_is_healthy_after_repair_skips_the_reset()
+    {
+        var fake = new FakeSystem { ShellHealthy = false, RepairFixesShell = true };
+        var output = new StringWriter();
+
+        var exit = await new FixPipeline(fake, output).RunAsync(CancellationToken.None);
+
+        var text = output.ToString();
+        Assert.Equal(0, exit);
+        Assert.Contains("Repairs", text);
+        Assert.Contains("healthy after repair", text);
+        Assert.DoesNotContain("Confirm reset", text);
+        Assert.DoesNotContain(fake.Calls, c => c.StartsWith("Reboot"));
+    }
+
+    [Fact]
+    public async Task Shell_still_broken_after_repair_goes_on_to_the_reset()
+    {
+        var (_, output, fake) = await RunAsync(shellHealthy: false);
+
+        Assert.Contains("Confirm reset", output);
+        Assert.Equal(2, fake.Calls.Count(c => c == "FindWindow Shell_TrayWnd"));
+    }
+
+    [Fact]
     public async Task Every_action_is_recorded_by_the_fake()
     {
         var (_, _, fake) = await RunAsync(shellHealthy: false);
