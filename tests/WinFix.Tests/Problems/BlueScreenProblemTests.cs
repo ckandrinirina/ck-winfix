@@ -462,4 +462,31 @@ public class BlueScreenProblemTests
 
         Assert.Contains("RunCommand wusa /uninstall /kb:5002222 /quiet /norestart", fake.Calls);
     }
+
+    [Fact]
+    public async Task A_driver_name_with_non_ascii_digits_is_never_queried_or_removed()
+    {
+        const string crafted = "oem\u0661\u0662.inf";
+        var machine = TwoCrashes();
+        machine.Drivers = DriverBlock(crafted, "Contoso");
+        machine.InstallTimes[crafted] = FirstCrash.AddDays(-1).ToString("o");
+        var fake = machine.Build();
+
+        await new RollbackDriverStep(() => Now).RunAsync(fake, CancellationToken.None);
+
+        Assert.DoesNotContain(fake.Calls, c => c.Contains(crafted, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_hotfix_id_with_non_ascii_digits_is_never_passed_to_wusa()
+    {
+        var machine = TwoCrashes();
+        machine.HotFixes = HotFix("KB\uFF15\uFF10\uFF10\uFF13", FirstCrash.AddDays(-1));
+        var fake = machine.Build();
+
+        var result = await new RollbackUpdateStep(() => Now).RunAsync(fake, CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.DoesNotContain(fake.Calls, c => c.Contains("wusa", StringComparison.Ordinal));
+    }
 }

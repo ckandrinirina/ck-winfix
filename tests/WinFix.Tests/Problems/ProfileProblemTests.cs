@@ -21,7 +21,8 @@ public class ProfileProblemTests
         bool whoamiFails = false,
         bool exportFails = false,
         bool promoteFails = false,
-        bool otherUserBak = false)
+        bool otherUserBak = false,
+        string? whoami = null)
     {
         var system = new FakeSystem
         {
@@ -31,7 +32,7 @@ public class ProfileProblemTests
                 {
                     return whoamiFails
                         ? new CommandResult(1, "ERROR")
-                        : new CommandResult(0, $"\"desktop-1\\alice\",\"{Sid}\"\r\n");
+                        : new CommandResult(0, whoami ?? $"\"desktop-1\\alice\",\"{Sid}\"\r\n");
                 }
 
                 if (file == "cmd.exe" && args.Contains("NTUSER.DAT", StringComparison.Ordinal))
@@ -291,6 +292,34 @@ public class ProfileProblemTests
         var result = await Repair(system);
 
         Assert.False(result.Succeeded);
+        Assert.DoesNotContain(system.Calls, c => c.Contains("reg export", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_user_name_with_a_percent_sign_is_never_put_in_a_cmd_line()
+    {
+        var system = Machine(sidPath: Temp, realFolderExists: true, whoami: $"\"desktop-1\\%COMSPEC%\",\"{Sid}\"\r\n");
+
+        var result = await Repair(system);
+
+        Assert.False(result.Succeeded);
+        Assert.DoesNotContain(system.Calls, c => c.Contains("%COMSPEC%", StringComparison.Ordinal));
+        Assert.DoesNotContain(system.Calls, IsChange);
+        Assert.Equal(Temp, system.RegistryValues[($@"{List}\{Sid}", "ProfileImagePath")]);
+    }
+
+    [Fact]
+    public async Task A_sid_with_non_ascii_digits_is_refused_without_changes()
+    {
+        const string crafted = "S-1-5-21-1111-2222-3333-\uFF11\uFF10\uFF10\uFF11";
+        var system = Machine(whoami: $"\"desktop-1\\alice\",\"{crafted}\"\r\n");
+        system.RegistryValues[($@"{List}\{crafted}", "ProfileImagePath")] = Temp;
+        system.RegistryValues[($@"{List}\{crafted}.bak", "ProfileImagePath")] = Real;
+
+        var result = await Repair(system);
+
+        Assert.False(result.Succeeded);
+        Assert.DoesNotContain(system.Calls, IsChange);
         Assert.DoesNotContain(system.Calls, c => c.Contains("reg export", StringComparison.Ordinal));
     }
 }

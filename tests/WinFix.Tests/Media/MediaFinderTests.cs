@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using WinFix.Media;
 using WinFix.System;
+using WinFix.Tests.System;
 
 namespace WinFix.Tests.Media;
 
@@ -323,5 +324,75 @@ public partial class MediaFinderTests
         var installed = await MediaMatcher.ReadInstalledAsync(fake, CancellationToken.None);
 
         Assert.Equal(new InstalledWindows("arm64", "Professional", "fr-FR"), installed);
+    }
+
+    public static TheoryData<string> QuotedIsoNames =>
+    [
+        "x';calc;'.iso",
+        "x\u2018;calc;\u2018.iso",
+        "x\u2019;calc;\u2019.iso",
+        "x\u201A;calc;\u201A.iso",
+        "x\u201B;calc;\u201B.iso",
+    ];
+
+    /// <summary>A PC whose Downloads holds <paramref name="iso"/>; the ISO mounts as H:\ but holds no setup, so it is dismounted.</summary>
+    private static FakeSystem OneIso(string iso)
+    {
+        var fake = new FakeSystem
+        {
+            CommandResponder = (_, args) =>
+                args.Contains("Win32_LogicalDisk", StringComparison.Ordinal) ? new(0, "C:|3")
+                : args.Contains("*.iso", StringComparison.Ordinal) ? new(0, iso)
+                : args.Contains("Dismount-DiskImage", StringComparison.Ordinal) ? new(0, "")
+                : args.Contains("Mount-DiskImage", StringComparison.Ordinal) ? new(0, "H")
+                : args.Contains("InstalledUICulture", StringComparison.Ordinal) ? new(0, "en-US")
+                : new(0, "False"),
+        };
+        fake.RegistryValues[(Cpu, "PROCESSOR_ARCHITECTURE")] = "AMD64";
+        fake.RegistryValues[(Nt, "EditionID")] = "Professional";
+        return fake;
+    }
+
+    [Theory]
+    [MemberData(nameof(QuotedIsoNames))]
+    public async Task A_quote_in_an_iso_name_stays_inside_the_mount_and_dismount_literals(string name)
+    {
+        var iso = $@"C:\Users\me\Downloads\{name}";
+        var fake = OneIso(iso);
+
+        await Find(fake);
+
+        var mount = Assert.Single(fake.Calls, c => c.Contains("(Mount-DiskImage", StringComparison.Ordinal));
+        var mounted = PsLiteral.After(mount, "-ImagePath ");
+        Assert.Equal(iso, mounted.Value);
+        Assert.Equal(" -PassThru | Get-Volume).DriveLetter\"", mounted.Tail);
+
+        var dismount = Assert.Single(fake.Calls, c => c.Contains("Dismount-DiskImage", StringComparison.Ordinal));
+        var dismounted = PsLiteral.After(dismount, "-ImagePath ");
+        Assert.Equal(iso, dismounted.Value);
+        Assert.Equal("\"", dismounted.Tail);
+    }
+
+    [Fact]
+    public async Task An_iso_path_with_a_double_quote_is_logged_and_never_put_in_a_command()
+    {
+        var iso = @"C:\Users\me\Downloads\x"";calc;"".iso";
+        var fake = OneIso(iso);
+
+        Assert.Null(await Find(fake));
+
+        Assert.DoesNotContain(fake.Calls, c => c.Contains("calc", StringComparison.Ordinal));
+        Assert.Contains(fake.Logs, l => l.Contains(iso, StringComparison.Ordinal) && l.Contains("skipped", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_wim_path_with_a_double_quote_is_never_passed_to_dism()
+    {
+        var fake = new FakeSystem();
+
+        var images = await MediaMatcher.ReadImagesAsync(fake, @"E:\a"" /Apply-Image /ImageFile:""x.wim", CancellationToken.None);
+
+        Assert.Empty(images);
+        Assert.Empty(fake.Calls);
     }
 }

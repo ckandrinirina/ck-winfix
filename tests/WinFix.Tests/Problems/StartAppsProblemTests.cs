@@ -1,6 +1,7 @@
 using WinFix.Problems;
 using WinFix.Repairs;
 using WinFix.System;
+using WinFix.Tests.System;
 
 namespace WinFix.Tests.Problems;
 
@@ -182,5 +183,40 @@ public class StartAppsProblemTests
         await new ReRegisterSystemAppsStep().RunAsync(fake, CancellationToken.None);
 
         Assert.Contains(@"C:\Odd''Path\Host\AppxManifest.xml", Assert.Single(Registrations(fake)));
+    }
+
+    [Theory]
+    [InlineData("'")]
+    [InlineData("\u2018")]
+    [InlineData("\u2019")]
+    [InlineData("\u201A")]
+    [InlineData("\u201B")]
+    public async Task Step_keeps_any_quote_in_the_install_location_inside_the_literal(string quote)
+    {
+        var location = $@"C:\Odd{quote};calc;{quote}Path\Host";
+        var json = "[" + Entry(StartHost, "Modified", location) + "," + Entry(Cbs, "Ok", Location(Cbs))
+            + "," + Entry(Settings, "Ok", Location(Settings)) + "]";
+        var fake = WithPackages(json);
+
+        await new ReRegisterSystemAppsStep().RunAsync(fake, CancellationToken.None);
+
+        var registered = PsLiteral.After(Assert.Single(Registrations(fake)), "-Register ");
+        Assert.Equal($@"{location}\AppxManifest.xml", registered.Value);
+        Assert.Equal("\"", registered.Tail);
+    }
+
+    [Fact]
+    public async Task Step_refuses_an_install_location_with_a_double_quote()
+    {
+        var json = "[" + """{"Name":"Microsoft.Windows.StartMenuExperienceHost","Status":"Modified","InstallLocation":"C:\\Odd\";calc;\"Path"}"""
+            + "," + Entry(Cbs, "Ok", Location(Cbs)) + "," + Entry(Settings, "Ok", Location(Settings)) + "]";
+        var fake = WithPackages(json);
+
+        var result = await new ReRegisterSystemAppsStep().RunAsync(fake, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Empty(Registrations(fake));
+        Assert.DoesNotContain(fake.Calls, c => c.Contains("calc", StringComparison.Ordinal));
+        Assert.Contains(StartHost, string.Join('\n', fake.Logs));
     }
 }
