@@ -28,7 +28,7 @@ public class IsoProviderTests
         var path = await rig.Provider.DownloadAsync(rig.Output, CancellationToken.None);
 
         Assert.Equal($"{Downloads}/Windows11_x64_en-US.iso", path);
-        Assert.Equal(Payload, rig.Files.Data[path].ToArray());
+        Assert.Equal(Payload, rig.Files.Data[path!].ToArray());
         Assert.Equal(new IsoRequest("11", "x64", "en-US"), Assert.Single(rig.Source.Requests));
         Assert.Equal(IsoUrl, Assert.Single(rig.Handler.Requests));
     }

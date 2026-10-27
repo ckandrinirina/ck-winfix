@@ -60,33 +60,63 @@ public sealed partial class IsoDownloader(IIsoSource source, HttpClient http, ID
         }
 
         var request = new IsoRequest(build >= Windows11FirstBuild ? "11" : "10", installed.Architecture, installed.Language);
+        if (!await GetFileAsync(request, isoPath, system.Log, system.DelayAsync, ct))
+        {
+            return null;
+        }
+
+        return await CheckAsync(system, isoPath, installed, ct);
+    }
+
+    /// <summary>
+    /// Looks up the link, downloads (resuming a <c>.part</c> file), checks the SHA-256 when given and moves the file to
+    /// <paramref name="isoPath"/>. True when it is there; every failure is logged and gives false.
+    /// </summary>
+    public async Task<bool> DownloadFileAsync(
+        IsoRequest request, string isoPath, Action<string> log, Func<TimeSpan, CancellationToken, Task> delay, CancellationToken ct)
+    {
+        try
+        {
+            return await GetFileAsync(request, isoPath, log, delay, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            log($"Windows ISO download failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    private async Task<bool> GetFileAsync(
+        IsoRequest request, string isoPath, Action<string> log, Func<TimeSpan, CancellationToken, Task> delay, CancellationToken ct)
+    {
+        var partPath = isoPath + ".part";
         var link = await source.GetLinkAsync(request, ct);
         if (link is null)
         {
-            system.Log("Windows ISO download skipped: no download link was found for this PC.");
-            return null;
+            log("Windows ISO download skipped: no download link was found for this PC.");
+            return false;
         }
 
         if (!MicrosoftIsoSource.IsTrustedUrl(link.Url))
         {
-            system.Log("Windows ISO download skipped: the link is not https on a Microsoft host.");
-            return null;
+            log("Windows ISO download skipped: the link is not https on a Microsoft host.");
+            return false;
         }
 
-        if (!await FetchAsync(system, link.Url, partPath, ct))
+        if (!await FetchAsync(log, delay, link.Url, partPath, ct))
         {
-            return null;
+            return false;
         }
 
         if (link.Sha256 is not null && !files.Sha256Hex(partPath).Equals(link.Sha256, StringComparison.OrdinalIgnoreCase))
         {
-            system.Log("The downloaded Windows ISO does not match its SHA-256 and was deleted.");
+            log("The downloaded Windows ISO does not match its SHA-256 and was deleted.");
             files.Delete(partPath);
-            return null;
+            return false;
         }
 
         files.Move(partPath, isoPath);
-        return await CheckAsync(system, isoPath, installed, ct);
+        return true;
     }
 
     private async Task<bool> HasRoomAsync(ISystem system, string letter, long alreadyDownloaded, CancellationToken ct)
@@ -108,7 +138,7 @@ public sealed partial class IsoDownloader(IIsoSource source, HttpClient http, ID
         return false;
     }
 
-    private async Task<bool> FetchAsync(ISystem system, Uri url, string partPath, CancellationToken ct)
+    private async Task<bool> FetchAsync(Action<string> log, Func<TimeSpan, CancellationToken, Task> delay, Uri url, string partPath, CancellationToken ct)
     {
         var lastPercent = -1;
         for (var attempt = 1; attempt <= MaxAttempts; attempt++)
@@ -125,7 +155,7 @@ public sealed partial class IsoDownloader(IIsoSource source, HttpClient http, ID
                 using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
                 if (response.RequestMessage?.RequestUri is { } final && !MicrosoftIsoSource.IsTrustedUrl(final))
                 {
-                    system.Log("Windows ISO download stopped: the server redirected to an address that is not https on a Microsoft host.");
+                    log("Windows ISO download stopped: the server redirected to an address that is not https on a Microsoft host.");
                     return false;
                 }
 
@@ -145,7 +175,7 @@ public sealed partial class IsoDownloader(IIsoSource source, HttpClient http, ID
                         lastPercent = await CopyAsync(response, partPath, append: false, 0, response.Content.Headers.ContentLength, lastPercent, ct);
                         break;
                     default:
-                        system.Log($"Windows ISO download failed: the server answered {(int)response.StatusCode} {response.StatusCode}.");
+                        log($"Windows ISO download failed: the server answered {(int)response.StatusCode} {response.StatusCode}.");
                         return false;
                 }
 
@@ -153,12 +183,12 @@ public sealed partial class IsoDownloader(IIsoSource source, HttpClient http, ID
             }
             catch (Exception ex) when (ex is HttpRequestException or IOException)
             {
-                system.Log($"Windows ISO download interrupted at {files.Length(partPath)} bytes ({ex.Message}); attempt {attempt} of {MaxAttempts}.");
-                await system.DelayAsync(RetryDelay, ct);
+                log($"Windows ISO download interrupted at {files.Length(partPath)} bytes ({ex.Message}); attempt {attempt} of {MaxAttempts}.");
+                await delay(RetryDelay, ct);
             }
         }
 
-        system.Log("Windows ISO download gave up; the partial file is kept to resume next time.");
+        log("Windows ISO download gave up; the partial file is kept to resume next time.");
         return false;
     }
 

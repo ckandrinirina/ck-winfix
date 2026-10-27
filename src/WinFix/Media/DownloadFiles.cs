@@ -32,7 +32,13 @@ public sealed class DiskDownloadFiles : IDownloadFiles
 
     public void Move(string from, string to) => File.Move(from, to, overwrite: true);
 
-    public void Delete(string path) => File.Delete(path);
+    public void Delete(string path)
+    {
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+    }
 
     public string Sha256Hex(string path)
     {

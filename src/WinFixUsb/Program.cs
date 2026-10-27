@@ -1,4 +1,5 @@
 using WinFix;
+using WinFix.Media;
 using WinFixUsb.Disks;
 using WinFixUsb.System;
 using WinFixUsb.Usb;
@@ -14,7 +15,7 @@ public static class Program
         Writes a bootable Windows install USB from a Mac and puts WinFix.exe on it.
 
         Usage: WinFixUsb [options]
-          --iso <path>   Windows ISO to use (default: look for one, or download it)
+          --iso <path>   Windows ISO to use (default: download Windows 11 into Downloads)
           --disk <id>    external disk to erase, for example disk4 (default: ask)
           --dry-run      show every step and run nothing
           --help         show this text
@@ -28,7 +29,7 @@ public static class Program
             ? new FakeMacSystem { Answers = [disk ?? "disk4"] }
             : new MacSystem();
 
-    public static async Task<int> RunAsync(string[] args, TextWriter output, IMacSystem? system = null)
+    public static async Task<int> RunAsync(string[] args, TextWriter output, IMacSystem? system = null, UsbServices? services = null)
     {
         AboutBanner.Write(output, Product, typeof(Program).Assembly);
         if (args.Contains("--help"))
@@ -42,13 +43,7 @@ public static class Program
         var requestedDisk = ValueOf(args, "--disk");
         if (!dryRun)
         {
-            if (iso is null)
-            {
-                output.WriteLine("Pass the Windows ISO: WinFixUsb --iso <path>. To rehearse, run: WinFixUsb --dry-run");
-                return 2;
-            }
-
-            return await UsbWriter.WriteAsync(system ?? CreateSystem(dryRun: false), iso, requestedDisk, output, CancellationToken.None);
+            return await WriteUsbAsync(system ?? CreateSystem(dryRun: false), services ?? new UsbServices(), iso, requestedDisk, output);
         }
 
         iso ??= UnknownIso;
@@ -79,6 +74,35 @@ public static class Program
             output.WriteLine($"{number}. {title}");
             output.WriteLine($"   would run: {command} {string.Join(' ', arguments)}");
             await system.RunCommandAsync(command, arguments, CancellationToken.None);
+        }
+    }
+
+    /// <summary>Both downloads finish here, before the writer erases anything.</summary>
+    private static async Task<int> WriteUsbAsync(
+        IMacSystem system, UsbServices services, string? iso, string? requestedDisk, TextWriter output)
+    {
+        var ct = CancellationToken.None;
+        if (iso is null)
+        {
+            output.WriteLine("No --iso given: downloading Windows 11 from Microsoft into your Downloads folder.");
+            var source = services.IsoSource ?? new MicrosoftIsoSource(services.Http, output.WriteLine);
+            var provider = new IsoProvider(source, services.Http, services.Files, services.DownloadsFolder, services.Language, services.Delay);
+            iso = await provider.DownloadAsync(output, ct);
+            if (iso is null)
+            {
+                return 1;
+            }
+        }
+
+        var exeProvider = new WinFixExeProvider(system, services.Http, services.Files, services.ToolFolder, services.TempExe);
+        try
+        {
+            var exe = await exeProvider.StageAsync(output, ct);
+            return await UsbWriter.WriteAsync(system, iso, requestedDisk, output, ct, exe);
+        }
+        finally
+        {
+            exeProvider.Cleanup();
         }
     }
 

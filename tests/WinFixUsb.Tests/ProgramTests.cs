@@ -256,7 +256,7 @@ public class ProgramTests
             var handler = new FakeHandler(request =>
                 request.RequestUri!.Host.EndsWith("microsoft.com", StringComparison.Ordinal) ? FakeHandler.Bytes(Payload)
                 : ExeOnGitHub ? FakeHandler.Bytes(Payload)
-                : FakeHandler.Status(System.Net.HttpStatusCode.NotFound))
+                : FakeHandler.Status(global::System.Net.HttpStatusCode.NotFound))
             {
                 OnRequest = request =>
                 {

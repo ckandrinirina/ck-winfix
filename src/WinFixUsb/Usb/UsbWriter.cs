@@ -14,7 +14,7 @@ public static class UsbWriter
 
     /// <summary>Writes the ISO to a disk the user confirms. Returns the exit code; nothing is erased before the checks pass.</summary>
     public static async Task<int> WriteAsync(
-        IMacSystem system, string iso, string? requestedDisk, TextWriter output, CancellationToken ct)
+        IMacSystem system, string iso, string? requestedDisk, TextWriter output, CancellationToken ct, string? winFixExe = null)
     {
         if (iso.Any(c => c == '"' || char.IsControl(c)))
         {
@@ -75,10 +75,30 @@ public static class UsbWriter
             return 1;
         }
 
+        var exeCopied = false;
+        if (winFixExe is not null)
+        {
+            Announce("Copy WinFix.exe");
+            var copy = await system.RunCommandAsync("cp", ["--", winFixExe, $"{UsbMount}/WinFix.exe"], ct);
+            exeCopied = copy.ExitCode == 0;
+            if (!exeCopied)
+            {
+                output.WriteLine($"Warning: WinFix.exe could not be copied to the USB (exit code {copy.ExitCode}). Copy it there yourself: {WinFixExeProvider.DownloadUrl}");
+            }
+        }
+
         mounted = null;
-        return await RunStepAsync("Unmount the ISO", "hdiutil", ["detach", mount.MountPoint])
-            ?? await RunStepAsync($"Eject the USB {disk.Identifier}", "diskutil", ["eject", disk.Identifier])
-            ?? 0;
+        failed = await RunStepAsync("Unmount the ISO", "hdiutil", ["detach", mount.MountPoint])
+            ?? await RunStepAsync($"Eject the USB {disk.Identifier}", "diskutil", ["eject", disk.Identifier]);
+        if (failed is not null)
+        {
+            return 1;
+        }
+
+        output.WriteLine(exeCopied
+            ? "Done. Boot the PC from the USB. If Windows starts again, run WinFix.exe from the USB."
+            : "Done. WinFix.exe is not on the USB. Boot the PC from the USB to repair or reinstall Windows.");
+        return 0;
 
         void Announce(string title) => output.WriteLine($"{++step}. {title}");
 

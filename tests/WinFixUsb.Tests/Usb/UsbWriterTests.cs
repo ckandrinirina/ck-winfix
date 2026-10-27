@@ -1,4 +1,5 @@
 using SecurityElement = System.Security.SecurityElement;
+using WinFixUsb;
 using WinFixUsb.System;
 using WinFixUsb.Usb;
 
@@ -340,7 +341,13 @@ public class UsbWriterTests
         var fake = IsoFake();
         var output = new StringWriter();
 
-        var exit = await Program.RunAsync(["--iso", Iso], output, fake);
+        var offline = new UsbServices
+        {
+            Http = new HttpClient(new FakeHandler(_ => FakeHandler.Status(global::System.Net.HttpStatusCode.NotFound))),
+            Files = new MemoryFiles(),
+        };
+
+        var exit = await Program.RunAsync(["--iso", Iso], output, fake, offline);
 
         Assert.Equal(0, exit);
         Assert.Equal(HappyCommands, Commands(fake));
