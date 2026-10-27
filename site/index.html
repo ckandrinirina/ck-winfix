@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="WinFix repairs common Windows problems by itself. Free download for Windows, plus a Mac tool that writes a Windows install USB.">
+<title>WinFix</title>
+<style>
+:root {
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --text: #1b1f27;
+  --muted: #55606f;
+  --border: #d9dee6;
+  --accent: #0b5cd5;
+  --accent-text: #ffffff;
+  --code-bg: #eef1f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12151a;
+    --surface: #1b2028;
+    --text: #e8ecf2;
+    --muted: #a3adbb;
+    --border: #2d3441;
+    --accent: #5a9bff;
+    --accent-text: #0c1118;
+    --code-bg: #232a35;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 1rem/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+main { max-width: 44rem; margin: 0 auto; padding: 2rem 1rem 3rem; }
+h1 { font-size: 2.25rem; margin: 0 0 .5rem; }
+h2 { font-size: 1.35rem; margin: 2.25rem 0 .75rem; }
+p { margin: 0 0 1rem; }
+.lead { font-size: 1.15rem; color: var(--muted); }
+.note { color: var(--muted); font-size: .925rem; }
+.downloads { display: grid; gap: .75rem; margin: 1.5rem 0 .75rem; }
+.btn {
+  display: block;
+  padding: .85rem 1rem;
+  border-radius: .6rem;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.btn:hover, .btn:focus-visible { filter: brightness(1.1); outline: 2px solid var(--text); outline-offset: 2px; }
+.btn small { display: block; font-weight: 400; opacity: .9; }
+ul, ol { margin: 0 0 1rem; padding-left: 1.4rem; }
+li { margin-bottom: .35rem; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
+code { background: var(--code-bg); padding: .1em .35em; border-radius: .3em; }
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: .5rem;
+  padding: .75rem 1rem;
+  margin: .5rem 0 1rem;
+  overflow-x: auto;
+}
+pre code { background: none; padding: 0; }
+a { color: var(--accent); }
+.btn:visited { color: var(--accent-text); }
+footer { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--border); color: var(--muted); font-size: .925rem; }
+footer p { margin: 0 0 .5rem; }
+@media (min-width: 40rem) {
+  .downloads { grid-template-columns: repeat(3, 1fr); }
+}
+</style>
+</head>
+<body>
+<main>
+  <h1>WinFix</h1>
+  <p class="lead">One Windows program that repairs common Windows problems by itself, cheapest fix first. If something is still broken, it can reinstall or reset Windows and keep your personal files.</p>
+
+  <section id="download">
+    <h2>Download</h2>
+    <div class="downloads">
+      <a class="btn" href="https://github.com/ckandrinirina/ck-winfix/releases/latest/download/WinFix.exe">WinFix.exe<small>Windows, 64-bit</small></a>
+      <a class="btn" href="https://github.com/ckandrinirina/ck-winfix/releases/latest/download/WinFixUsb-macos-arm64">WinFixUsb-macos-arm64<small>Mac with an Apple chip (M1 or newer)</small></a>
+      <a class="btn" href="https://github.com/ckandrinirina/ck-winfix/releases/latest/download/WinFixUsb-macos-x64">WinFixUsb-macos-x64<small>Mac with an Intel chip</small></a>
+    </div>
+    <p class="note">The files are not signed, so Windows or macOS may warn you when you open them. Windows must still start to use WinFix.exe.</p>
+  </section>
+
+  <section id="fixes">
+    <h2>What it fixes</h2>
+    <ul>
+      <li>No taskbar, or a screen that flashes every few seconds because Explorer keeps crashing.</li>
+      <li>Windows Update is broken: its service is turned off, or updates keep failing to install.</li>
+      <li>Blue screens: two or more crashes in the last 7 days.</li>
+      <li>Disk errors or damaged system files.</li>
+      <li>The Start menu, Search or Settings will not open.</li>
+      <li>Windows signed you in with a temporary profile, so your files and settings seem gone.</li>
+      <li>The network adapter is on, but no website can be reached.</li>
+    </ul>
+    <p>WinFix resets Windows only if a problem is still there after every fix. It explains what will happen and waits until you type <code>YES</code>. Every reset keeps your personal files.</p>
+  </section>
+
+  <section id="start">
+    <h2>How to start it as administrator</h2>
+    <p>WinFix needs administrator rights. This way works even when the taskbar is gone.</p>
+    <ol>
+      <li>Press <strong>Ctrl+Shift+Esc</strong> to open Task Manager.</li>
+      <li>Click <strong>Run new task</strong>.</li>
+      <li>Type the full path to <code>WinFix.exe</code>, for example <code>C:\Users\you\Downloads\WinFix.exe</code>.</li>
+      <li>Tick <strong>Create this task with administrative privileges</strong>.</li>
+      <li>Click <strong>OK</strong>.</li>
+    </ol>
+    <p class="note">To rehearse first, run <code>WinFix.exe --dry-run</code>. It shows what WinFix would do and changes nothing.</p>
+  </section>
+
+  <section id="mac">
+    <h2>Only have a Mac?</h2>
+    <p>If your PC no longer starts, <code>WinFixUsb</code> writes a bootable Windows install USB from your Mac and puts <code>WinFix.exe</code> on it. It erases the USB stick, so use an empty one of 8 GB or more. It only ever erases an external disk, and only after you type its name.</p>
+    <ol>
+      <li>Install wimlib. It splits the large <code>install.wim</code> file so it fits on the USB.
+<pre><code>brew install wimlib</code></pre></li>
+      <li>Download the <code>WinFixUsb</code> file for your Mac, then remove the quarantine flag and make it runnable. Use <code>WinFixUsb-macos-x64</code> instead if your Mac has an Intel chip.
+<pre><code>xattr -d com.apple.quarantine ./WinFixUsb-macos-arm64
+chmod +x ./WinFixUsb-macos-arm64</code></pre></li>
+      <li>Practice first. This shows every step and changes nothing.
+<pre><code>./WinFixUsb-macos-arm64 --dry-run</code></pre></li>
+      <li>Plug in the USB stick and run it for real. Without <code>--iso</code>, it downloads Windows 11 from Microsoft into your Downloads folder. It asks which disk to erase; type its name, for example <code>disk4</code>.
+<pre><code>./WinFixUsb-macos-arm64</code></pre>
+To use an ISO you already have, or to name the disk yourself:
+<pre><code>./WinFixUsb-macos-arm64 --iso ~/Downloads/Win11.iso --disk disk4</code></pre></li>
+      <li>Boot the PC from the USB. Plug the stick into the PC, restart it, and open the boot menu (often <strong>F12</strong>, <strong>F11</strong>, <strong>F8</strong> or <strong>Esc</strong> right after power on). Pick the USB stick. In Windows Setup, choose <strong>Repair your computer</strong> to use the recovery tools, or install Windows again. <code>WinFix.exe</code> is at the top of the USB stick.</li>
+    </ol>
+  </section>
+
+  <footer>
+    <p>WinFix &mdash; by ANDRINIRINA Erick &middot; <a href="https://github.com/ckandrinirina">github.com/ckandrinirina</a></p>
+    <p>Open source under the <a href="https://github.com/ckandrinirina/ck-winfix/blob/main/LICENSE">MIT license</a>.</p>
+  </footer>
+</main>
+</body>
+</html>
