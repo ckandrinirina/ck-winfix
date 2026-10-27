@@ -20,6 +20,14 @@ public static class Program
             return 2;
         }
 
-        return await new FixPipeline(system ?? new FakeSystem(), output, dryRun: true).RunAsync(CancellationToken.None, args.Contains("--resume"));
+        var onlyIndex = Array.IndexOf(args, "--only");
+        if (onlyIndex >= 0 && onlyIndex + 1 >= args.Length)
+        {
+            output.WriteLine("--only needs a module name, for example: --only shell");
+            return 2;
+        }
+
+        var only = onlyIndex >= 0 ? args[onlyIndex + 1] : null;
+        return await new FixPipeline(system ?? new FakeSystem(), output, dryRun: true, only: only).RunAsync(CancellationToken.None, args.Contains("--resume"));
     }
 }

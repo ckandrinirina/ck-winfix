@@ -3,8 +3,8 @@ using WinFix.System;
 
 namespace WinFix.Pipeline;
 
-/// <summary>Progress that survives a reboot: NextStage is the index of the first repair step still to run.</summary>
-public sealed record RunState(int NextStage)
+/// <summary>Progress that survives a reboot: NextStage is the index of the first repair step still to run in Module (null: the first module).</summary>
+public sealed record RunState(int NextStage, string? Module = null)
 {
     /// <summary>The real system expands %ProgramData%.</summary>
     public const string FilePath = @"%ProgramData%\WinFix\state.json";
