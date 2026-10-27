@@ -16,7 +16,7 @@ public class UsbWriterTests
         "RunCommand hdiutil attach -nobrowse -readonly -plist /tmp/Win.iso",
         "RunCommand diskutil list -plist external physical",
         "RunCommand diskutil eraseDisk FAT32 WINFIX MBR disk4",
-        "RunCommand rsync -r --exclude /sources/install.wim /Volumes/WINDOWS_ISO/ /Volumes/WINFIX/",
+        "RunCommand rsync -r --exclude /sources/install.wim -- /Volumes/WINDOWS_ISO/ /Volumes/WINFIX/",
         "RunCommand cp /Volumes/WINDOWS_ISO/sources/install.wim /Volumes/WINFIX/sources/install.wim",
         "RunCommand hdiutil detach /Volumes/WINDOWS_ISO",
         "RunCommand diskutil eject disk4",
@@ -79,7 +79,7 @@ public class UsbWriterTests
         var (_, _, fake) = await WriteAsync(IsoFake(FourGB));
 
         var commands = Commands(fake);
-        Assert.Contains("RunCommand cp /Volumes/WINDOWS_ISO/sources/install.wim /Volumes/WINFIX/sources/install.wim", commands);
+        Assert.Contains("RunCommand cp -- /Volumes/WINDOWS_ISO/sources/install.wim /Volumes/WINFIX/sources/install.wim", commands);
         Assert.DoesNotContain(commands, c => c.Contains("split"));
     }
 
@@ -202,15 +202,77 @@ public class UsbWriterTests
     }
 
     [Fact]
-    public async Task A_path_with_spaces_is_quoted()
+    public async Task An_iso_path_with_spaces_is_one_argument()
     {
         var fake = IsoFake();
         var output = new StringWriter();
 
         await UsbWriter.WriteAsync(fake, "/tmp/My Win.iso", null, output, CancellationToken.None);
 
-        Assert.Contains("RunCommand hdiutil attach -nobrowse -readonly -plist \"/tmp/My Win.iso\"", Commands(fake));
+        Assert.Contains(fake.Invocations, i => i.File == "hdiutil" && i.Args.SequenceEqual(["attach", "-nobrowse", "-readonly", "-plist", "/tmp/My Win.iso"]));
     }
+
+    [Fact]
+    public async Task An_iso_path_starting_with_a_dash_becomes_absolute_so_it_is_never_an_option()
+    {
+        var fake = IsoFake();
+        var output = new StringWriter();
+
+        await UsbWriter.WriteAsync(fake, "-evil.iso", null, output, CancellationToken.None);
+
+        var attach = fake.Invocations.Single(i => i.File == "hdiutil" && i.Args[0] == "attach");
+        Assert.Equal(Path.GetFullPath("-evil.iso"), attach.Args[^1]);
+        Assert.StartsWith("/", attach.Args[^1]);
+    }
+
+    [Fact]
+    public async Task A_volume_name_with_spaces_and_a_leading_dash_is_one_argument_after_double_dash()
+    {
+        const string mount = "/Volumes/-e touch x";
+        var fake = new FakeMacSystem { Answers = ["disk4"], IsoMountPlist = MountPlist(mount) };
+        fake.FileSizes[mount + "/setup.exe"] = 100;
+        fake.FileSizes[mount + "/sources/install.wim"] = 1_000;
+
+        var (exit, _, _) = await WriteAsync(fake);
+
+        Assert.Equal(0, exit);
+        var rsync = fake.Invocations.Single(i => i.File == "rsync");
+        Assert.Equal(["-r", "--exclude", "/sources/install.wim", "--", mount + "/", "/Volumes/WINFIX/"], rsync.Args);
+        var cp = fake.Invocations.Single(i => i.File == "cp");
+        Assert.Equal(["--", mount + "/sources/install.wim", "/Volumes/WINFIX/sources/install.wim"], cp.Args);
+        Assert.Contains(fake.Invocations, i => i.File == "hdiutil" && i.Args.SequenceEqual(["detach", mount]));
+    }
+
+    [Theory]
+    [InlineData("/tmp/evil")]
+    [InlineData("/Volumesx/a")]
+    [InlineData("/Volumes/")]
+    [InlineData("/Volumes/a\"b")]
+    [InlineData("/Volumes/a\\b")]
+    [InlineData("/Volumes/a\nb")]
+    [InlineData("/Volumes/a\" -e \"touch x")]
+    public async Task An_unsafe_mount_point_is_refused_before_the_erase_and_the_iso_is_detached(string mount)
+    {
+        var fake = new FakeMacSystem { Answers = ["disk4"], IsoMountPlist = MountPlist(mount) };
+        fake.FileSizes[mount + "/setup.exe"] = 100;
+        fake.FileSizes[mount + "/sources/install.wim"] = 1_000;
+
+        var (exit, lines, _) = await WriteAsync(fake);
+
+        Assert.NotEqual(0, exit);
+        Assert.Contains(lines, l => l.StartsWith("Step failed:") && l.Contains("Mount the ISO"));
+        Assert.DoesNotContain(fake.Invocations, i => i.File is "diskutil" && i.Args[0] == "eraseDisk");
+        Assert.DoesNotContain(fake.Invocations, i => i.File is "rsync" or "cp");
+        Assert.DoesNotContain(fake.Calls, c => c.StartsWith("Ask "));
+        Assert.Equal(["detach", "/dev/disk9"], fake.Invocations[^1].Args);
+        Assert.DoesNotContain(fake.Invocations, i => i.Args.Contains(mount));
+    }
+
+    private static string MountPlist(string mount) =>
+        "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>system-entities</key><array>"
+        + "<dict><key>dev-entry</key><string>/dev/disk9</string></dict>"
+        + $"<dict><key>dev-entry</key><string>/dev/disk9s1</string><key>mount-point</key><string>{global::System.Security.SecurityElement.Escape(mount)}</string></dict>"
+        + "</array></dict></plist>";
 
     [Fact]
     public async Task A_path_with_a_double_quote_is_refused_before_any_command()

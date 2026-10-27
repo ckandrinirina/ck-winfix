@@ -114,7 +114,7 @@ public class ProgramTests
     {
         var fake = new FakeMacSystem();
 
-        var result = await fake.RunCommandAsync("diskutil", "list -plist external physical", CancellationToken.None);
+        var result = await fake.RunCommandAsync("diskutil", ["list", "-plist", "external", "physical"], CancellationToken.None);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("disk4", result.Output);
