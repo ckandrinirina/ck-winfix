@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using WinFix.System;
 
 namespace WinFix.Tests;
@@ -82,6 +83,75 @@ public class AboutBannerTests
 
         Assert.StartsWith("WinFix ", FirstLine(output));
         Assert.Contains(Author, FirstLine(output));
+    }
+
+    [Fact]
+    public void A_build_with_Version_1_2_3_prints_WinFix_1_2_3_first()
+    {
+        var work = Path.Combine(Path.GetTempPath(), "winfix-version-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            CopySource(Path.Combine(RepoRoot(), "src", "WinFix"), work);
+
+            // SourceRevisionId makes the SDK append "+abc123", as a real build does with the commit.
+            Run(work, "build", "WinFix.csproj", "-c", "Debug", "-o", "out", "-p:Version=1.2.3", "-p:SourceRevisionId=abc123");
+            var printed = Run(work, "out/WinFix.dll", "--dry-run", "--only", "shell");
+
+            Assert.Equal($"WinFix 1.2.3 — {Author}", printed.Split('\n')[0].TrimEnd('\r'));
+        }
+        finally
+        {
+            Directory.Delete(work, recursive: true);
+        }
+    }
+
+    private static string RepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "WinFix.sln")))
+        {
+            dir = dir.Parent;
+        }
+
+        return dir?.FullName ?? throw new InvalidOperationException("WinFix.sln not found above the test binaries");
+    }
+
+    private static void CopySource(string from, string to)
+    {
+        foreach (var file in Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(from, file);
+            if (relative.StartsWith("bin" + Path.DirectorySeparatorChar) || relative.StartsWith("obj" + Path.DirectorySeparatorChar))
+            {
+                continue;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(to, relative))!);
+            File.Copy(file, Path.Combine(to, relative));
+        }
+    }
+
+    private static string Run(string workingDirectory, params string[] dotnetArgs)
+    {
+        var start = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = true,
+        };
+        foreach (var arg in dotnetArgs)
+        {
+            start.ArgumentList.Add(arg);
+        }
+
+        using var process = Process.Start(start)!;
+        process.StandardInput.Close();
+        var stderr = process.StandardError.ReadToEndAsync();
+        var stdout = process.StandardOutput.ReadToEnd();
+        Assert.True(process.WaitForExit(180_000), "dotnet did not finish in time");
+        Assert.True(process.ExitCode == 0, $"dotnet {string.Join(' ', dotnetArgs)} exited {process.ExitCode}:\n{stdout}\n{stderr.Result}");
+        return stdout;
     }
 
     private static string FirstLine(StringWriter output) => output.ToString().Split('\n')[0].TrimEnd('\r');
