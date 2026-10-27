@@ -23,12 +23,17 @@ public sealed class FakeSystem : ISystem
 
     public string ExecutablePath { get; init; } = @"C:\WinFix\WinFix.exe";
 
+    public string WindowsDirectory { get; init; } = @"C:\Windows";
+
     public TimeSpan TotalDelay { get; private set; }
 
     public bool ShellHealthy { get; init; }
 
     /// <summary>Exit code every command returns.</summary>
     public int CommandExitCode { get; init; }
+
+    /// <summary>Output every command returns.</summary>
+    public string CommandOutput { get; init; } = string.Empty;
 
     /// <summary>Registry keys that exist; DeleteRegistryKey reports whether it removed one.</summary>
     public IReadOnlyCollection<string> ExistingRegistryKeys { get; init; } = [];
@@ -46,7 +51,7 @@ public sealed class FakeSystem : ISystem
     {
         Record($"RunCommand {fileName} {arguments}".TrimEnd());
         _repaired = true;
-        return Task.FromResult(new CommandResult(CommandExitCode, string.Empty));
+        return Task.FromResult(new CommandResult(CommandExitCode, CommandOutput));
     }
 
     public string? ReadRegistryValue(string keyPath, string valueName)
@@ -103,7 +108,23 @@ public sealed class FakeSystem : ISystem
     public bool DeleteRegistryKey(string keyPath)
     {
         Record($"DeleteRegistryKey {keyPath}");
-        return ExistingRegistryKeys.Contains(keyPath);
+        var removed = RegistryValues.Keys
+            .Where(k => k.Key.Equals(keyPath, StringComparison.OrdinalIgnoreCase)
+                || k.Key.StartsWith(keyPath + @"\", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        removed.ForEach(k => RegistryValues.Remove(k));
+        return removed.Count > 0 || ExistingRegistryKeys.Contains(keyPath);
+    }
+
+    public IReadOnlyList<string> GetRegistrySubKeyNames(string keyPath)
+    {
+        Record($"GetRegistrySubKeyNames {keyPath}");
+        var prefix = keyPath + @"\";
+        return RegistryValues.Keys
+            .Where(k => k.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .Select(k => k.Key[prefix.Length..].Split('\\')[0])
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public bool FindWindow(string className)

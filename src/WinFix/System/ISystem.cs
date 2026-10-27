@@ -7,6 +7,7 @@ public interface ISystem
 {
     Task<CommandResult> RunCommandAsync(string fileName, string arguments, CancellationToken ct);
 
+    /// <summary>An empty <paramref name="valueName"/> is the key's default value; null when missing.</summary>
     string? ReadRegistryValue(string keyPath, string valueName);
 
     void WriteRegistryValue(string keyPath, string valueName, string value);
@@ -21,6 +22,12 @@ public interface ISystem
     bool DeleteRegistryKey(string keyPath);
 
     bool FindWindow(string className);
+
+    /// <summary>Names of the direct subkeys; empty when the key is missing.</summary>
+    IReadOnlyList<string> GetRegistrySubKeyNames(string keyPath);
+
+    /// <summary>The Windows folder, e.g. C:\Windows.</summary>
+    string WindowsDirectory { get; }
 
     /// <summary>Full path of the running exe, used for the RunOnce relaunch.</summary>
     string ExecutablePath { get; }

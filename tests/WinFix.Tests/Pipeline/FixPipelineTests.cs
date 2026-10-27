@@ -79,7 +79,7 @@ public class FixPipelineTests
         var (_, output, fake) = await RunAsync(shellHealthy: false);
 
         Assert.Contains("Confirm reset", output);
-        Assert.Equal(4, fake.Calls.Count(c => c == "FindWindow Shell_TrayWnd"));
+        Assert.Equal(7, fake.Calls.Count(c => c == "FindWindow Shell_TrayWnd"));
     }
 
     [Fact]

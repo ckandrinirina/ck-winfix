@@ -121,8 +121,8 @@ public class QuickRepairsTests
     {
         var (_, _, fake) = await RunPipelineAsync(new FakeSystem());
 
-        // one diagnosis plus one check per step
-        Assert.Equal(4, fake.Calls.Count(c => c == "FindWindow Shell_TrayWnd"));
+        // one diagnosis plus one check per default step (3 quick, 3 deep)
+        Assert.Equal(7, fake.Calls.Count(c => c == "FindWindow Shell_TrayWnd"));
     }
 
     [Fact]

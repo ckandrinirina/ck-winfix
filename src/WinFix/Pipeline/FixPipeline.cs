@@ -14,7 +14,15 @@ public sealed class FixPipeline(
     private readonly ShellHealthCheck _healthCheck = healthCheck ?? new ShellHealthCheck(system);
 
     private readonly IReadOnlyList<IRepairStep> _steps =
-        steps ?? [new RestartExplorerStep(), new ClearIrisServiceStep(), new ReRegisterShellAppsStep()];
+        steps ??
+        [
+            new RestartExplorerStep(),
+            new ClearIrisServiceStep(),
+            new ReRegisterShellAppsStep(),
+            new DismRestoreHealthStep(),
+            new SfcScanStep(),
+            new ShellExtensionsStep(),
+        ];
 
     public async Task<int> RunAsync(CancellationToken ct, bool resume = false)
     {
@@ -38,9 +46,15 @@ public sealed class FixPipeline(
                 new RunState(index + 1).Save(system);
             }
 
-            await RunStepAsync(step, ct);
-            if (step.NeedsReboot)
+            var result = await RunStepAsync(step, ct);
+            if (step.NeedsReboot || result?.RebootRequired == true)
             {
+                // a NeedsReboot step saved before it ran; a reboot decided by the result saves now
+                if (!step.NeedsReboot)
+                {
+                    new RunState(index + 1).Save(system);
+                }
+
                 output.WriteLine("Restarting to finish this repair. WinFix will continue by itself.");
                 await system.RebootAsync(ct);
                 return 0;
@@ -66,7 +80,7 @@ public sealed class FixPipeline(
         return 0;
     }
 
-    private async Task RunStepAsync(IRepairStep step, CancellationToken ct)
+    private async Task<StepResult?> RunStepAsync(IRepairStep step, CancellationToken ct)
     {
         output.WriteLine($"Running: {step.Name}");
         try
@@ -74,11 +88,13 @@ public sealed class FixPipeline(
             var result = await step.RunAsync(system, ct);
             system.Log($"Step {step.Name}: exit {result.ExitCode} — {result.Message}");
             output.WriteLine(result.Succeeded ? result.Message : $"{step.Name} failed (exit {result.ExitCode}). {result.Message}");
+            return result;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             system.Log($"Step {step.Name} threw: {ex.Message}");
             output.WriteLine($"{step.Name} failed. {ex.Message}");
+            return null;
         }
     }
 }

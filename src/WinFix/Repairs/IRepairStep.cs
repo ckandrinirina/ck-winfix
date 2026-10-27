@@ -2,8 +2,8 @@ using WinFix.System;
 
 namespace WinFix.Repairs;
 
-/// <summary>ExitCode 0 is success; anything else is logged and the next step still runs.</summary>
-public sealed record StepResult(int ExitCode, string Message)
+/// <summary>ExitCode 0 is success; anything else is logged and the next step still runs. RebootRequired: the pipeline saves progress and restarts.</summary>
+public sealed record StepResult(int ExitCode, string Message, bool RebootRequired = false)
 {
     public bool Succeeded => ExitCode == 0;
 }
