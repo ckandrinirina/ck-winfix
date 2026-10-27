@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>WinFix</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
   </PropertyGroup>
 
 </Project>
