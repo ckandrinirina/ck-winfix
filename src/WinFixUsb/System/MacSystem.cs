@@ -4,17 +4,17 @@ using WinFix.System;
 
 namespace WinFixUsb.System;
 
-/// <summary>The real Mac: the only class that starts processes. Commands run as given, never through a shell.</summary>
+/// <summary>The real Mac: the only class that starts processes. Arguments go through ArgumentList, one argv entry each, never through a shell.</summary>
 public sealed class MacSystem : IMacSystem
 {
     /// <summary>The shell's "command not found" code, returned when the program cannot start.</summary>
     public const int NotFoundExitCode = 127;
 
-    public async Task<CommandResult> RunCommandAsync(string fileName, string arguments, CancellationToken ct)
+    public async Task<CommandResult> RunCommandAsync(string fileName, IReadOnlyList<string> arguments, CancellationToken ct)
     {
         using var process = new Process
         {
-            StartInfo = new ProcessStartInfo(fileName, arguments)
+            StartInfo = new ProcessStartInfo(fileName)
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -22,6 +22,11 @@ public sealed class MacSystem : IMacSystem
                 RedirectStandardError = true,
             },
         };
+
+        foreach (var argument in arguments)
+        {
+            process.StartInfo.ArgumentList.Add(argument);
+        }
 
         try
         {

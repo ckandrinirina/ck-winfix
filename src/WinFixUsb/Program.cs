@@ -54,7 +54,7 @@ public static class Program
         iso ??= UnknownIso;
         system ??= CreateSystem(dryRun: true, requestedDisk);
 
-        await Step(1, $"Find the ISO: {iso}", "hdiutil", $"attach -nobrowse -readonly -plist {iso}");
+        await Step(1, $"Find the ISO: {iso}", "hdiutil", "attach", "-nobrowse", "-readonly", "-plist", iso);
 
         output.WriteLine("2. Pick the USB");
         output.WriteLine("   would run: diskutil list -plist external physical");
@@ -67,17 +67,17 @@ public static class Program
         var disk = picked.Identifier;
         output.WriteLine($"   picked: {disk} ({picked.Name}, {picked.SizeText})");
 
-        await Step(3, $"Erase the USB {disk}", "diskutil", $"eraseDisk FAT32 WINFIX MBR {disk}");
-        await Step(4, "Copy Windows Setup", "rsync", "-a --exclude sources/install.wim /Volumes/WINDOWS_ISO/ /Volumes/WINFIX/");
-        await Step(5, "Split install.wim", "wimlib-imagex", "split /Volumes/WINDOWS_ISO/sources/install.wim /Volumes/WINFIX/sources/install.swm 3800");
-        await Step(6, "Copy WinFix.exe", "cp", "WinFix.exe /Volumes/WINFIX/");
-        await Step(7, $"Eject the USB {disk}", "diskutil", $"eject {disk}");
+        await Step(3, $"Erase the USB {disk}", "diskutil", "eraseDisk", "FAT32", "WINFIX", "MBR", disk);
+        await Step(4, "Copy Windows Setup", "rsync", "-r", "--exclude", "/sources/install.wim", "--", "/Volumes/WINDOWS_ISO/", "/Volumes/WINFIX/");
+        await Step(5, "Split install.wim", "wimlib-imagex", "split", "/Volumes/WINDOWS_ISO/sources/install.wim", "/Volumes/WINFIX/sources/install.swm", "3800");
+        await Step(6, "Copy WinFix.exe", "cp", "--", "WinFix.exe", "/Volumes/WINFIX/");
+        await Step(7, $"Eject the USB {disk}", "diskutil", "eject", disk);
         return 0;
 
-        async Task Step(int number, string title, string command, string arguments)
+        async Task Step(int number, string title, string command, params string[] arguments)
         {
             output.WriteLine($"{number}. {title}");
-            output.WriteLine($"   would run: {command} {arguments}");
+            output.WriteLine($"   would run: {command} {string.Join(' ', arguments)}");
             await system.RunCommandAsync(command, arguments, CancellationToken.None);
         }
     }

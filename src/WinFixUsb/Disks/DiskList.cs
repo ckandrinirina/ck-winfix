@@ -22,7 +22,7 @@ public static class DiskList
 
     public static async Task<IReadOnlyList<Disk>> ListAsync(IMacSystem system, CancellationToken ct)
     {
-        var result = await system.RunCommandAsync("diskutil", "list -plist external physical", ct);
+        var result = await system.RunCommandAsync("diskutil", ["list", "-plist", "external", "physical"], ct);
         return result.ExitCode == 0 ? Parse(result.Output) : [];
     }
 

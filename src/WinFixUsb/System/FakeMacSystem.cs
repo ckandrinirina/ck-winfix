@@ -3,15 +3,22 @@ using WinFix.System;
 
 namespace WinFixUsb.System;
 
+/// <summary>One command as the system received it.</summary>
+public sealed record MacCommand(string File, IReadOnlyList<string> Args);
+
 /// <summary>Records every call and touches nothing; backs --dry-run and the unit tests.</summary>
 public sealed class FakeMacSystem : IMacSystem
 {
     private const string ListExternalDisks = "list -plist external physical";
 
+    private readonly List<MacCommand> _invocations = [];
     private readonly List<string> _calls = [];
     private readonly Queue<string> _answers = [];
 
     public IReadOnlyList<string> Calls => _calls;
+
+    /// <summary>Every command with its arguments as separate entries.</summary>
+    public IReadOnlyList<MacCommand> Invocations => _invocations;
 
     /// <summary>In-memory file system keyed by path.</summary>
     public Dictionary<string, string> Files { get; } = [];
@@ -54,10 +61,11 @@ public sealed class FakeMacSystem : IMacSystem
         }
     }
 
-    public Task<CommandResult> RunCommandAsync(string fileName, string arguments, CancellationToken ct)
+    public Task<CommandResult> RunCommandAsync(string fileName, IReadOnlyList<string> arguments, CancellationToken ct)
     {
-        _calls.Add($"RunCommand {fileName} {arguments}".TrimEnd());
-        var line = $"{fileName} {arguments}";
+        var line = string.Join(' ', [fileName, .. arguments]);
+        _calls.Add($"RunCommand {line}");
+        _invocations.Add(new MacCommand(fileName, [.. arguments]));
         if (FailingCommands.Any(line.StartsWith))
         {
             return Task.FromResult(new CommandResult(1, string.Empty, "failed"));
@@ -65,8 +73,8 @@ public sealed class FakeMacSystem : IMacSystem
 
         var output = line switch
         {
-            _ when fileName == "diskutil" && arguments == ListExternalDisks => ExternalDisks,
-            _ when fileName == "hdiutil" && arguments.StartsWith("attach ") => IsoMountPlist,
+            _ when line == $"diskutil {ListExternalDisks}" => ExternalDisks,
+            _ when fileName == "hdiutil" && arguments.Count > 0 && arguments[0] == "attach" => IsoMountPlist,
             _ => string.Empty,
         };
         return Task.FromResult(new CommandResult(0, output));

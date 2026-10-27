@@ -16,17 +16,18 @@ public static class UsbWriter
     public static async Task<int> WriteAsync(
         IMacSystem system, string iso, string? requestedDisk, TextWriter output, CancellationToken ct)
     {
-        if (!CanQuote(iso))
+        if (iso.Any(c => c == '"' || char.IsControl(c)))
         {
             output.WriteLine("The ISO path holds a double quote or a control character. Rename the file and run again.");
             return 1;
         }
 
+        iso = Path.GetFullPath(iso);
         var step = 0;
         IsoMount? mounted = null;
 
         Announce("Check wimlib");
-        if ((await system.RunCommandAsync("wimlib-imagex", "--version", ct)).ExitCode != 0)
+        if ((await system.RunCommandAsync("wimlib-imagex", ["--version"], ct)).ExitCode != 0)
         {
             output.WriteLine(WimlibMissing);
             return 1;
@@ -58,15 +59,15 @@ public static class UsbWriter
             return 1;
         }
 
-        int? failed = await RunStepAsync($"Erase the USB {disk.Identifier}", "diskutil", $"eraseDisk FAT32 WINFIX MBR {disk.Identifier}")
+        int? failed = await RunStepAsync($"Erase the USB {disk.Identifier}", "diskutil", ["eraseDisk", "FAT32", "WINFIX", "MBR", disk.Identifier])
             ?? await RunStepAsync(
-                "Copy Windows Setup", "rsync", $"-r --exclude /sources/install.wim {Quote(mount.MountPoint + "/")} {UsbMount}/");
+                "Copy Windows Setup", "rsync", ["-r", "--exclude", "/sources/install.wim", "--", mount.MountPoint + "/", UsbMount + "/"]);
         if (failed is null && hasWim)
         {
             var big = system.FileSize(wim) > MaxWimBytes;
             failed = big
-                ? await RunStepAsync("Split install.wim", "wimlib-imagex", $"split {Quote(wim)} {UsbMount}/sources/install.swm 3800")
-                : await RunStepAsync("Copy install.wim", "cp", $"{Quote(wim)} {UsbMount}/sources/install.wim");
+                ? await RunStepAsync("Split install.wim", "wimlib-imagex", ["split", wim, $"{UsbMount}/sources/install.swm", "3800"])
+                : await RunStepAsync("Copy install.wim", "cp", ["--", wim, $"{UsbMount}/sources/install.wim"]);
         }
 
         if (failed is not null)
@@ -75,14 +76,14 @@ public static class UsbWriter
         }
 
         mounted = null;
-        return await RunStepAsync("Unmount the ISO", "hdiutil", $"detach {Quote(mount.MountPoint)}")
-            ?? await RunStepAsync($"Eject the USB {disk.Identifier}", "diskutil", $"eject {disk.Identifier}")
+        return await RunStepAsync("Unmount the ISO", "hdiutil", ["detach", mount.MountPoint])
+            ?? await RunStepAsync($"Eject the USB {disk.Identifier}", "diskutil", ["eject", disk.Identifier])
             ?? 0;
 
         void Announce(string title) => output.WriteLine($"{++step}. {title}");
 
         // null when the command succeeded, else the exit code to return
-        async Task<int?> RunStepAsync(string title, string command, string arguments)
+        async Task<int?> RunStepAsync(string title, string command, string[] arguments)
         {
             Announce(title);
             var result = await system.RunCommandAsync(command, arguments, ct);
@@ -106,9 +107,4 @@ public static class UsbWriter
             return 1;
         }
     }
-
-    /// <summary>The value as one argument: double-quoted when it holds whitespace.</summary>
-    internal static string Quote(string value) => value.Any(char.IsWhiteSpace) ? $"\"{value}\"" : value;
-
-    private static bool CanQuote(string value) => !value.Any(c => c == '"' || char.IsControl(c));
 }

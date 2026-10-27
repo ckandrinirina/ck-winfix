@@ -5,7 +5,8 @@ namespace WinFixUsb.System;
 /// <summary>Every macOS side effect goes through here; only the real implementation touches the Mac.</summary>
 public interface IMacSystem
 {
-    Task<CommandResult> RunCommandAsync(string fileName, string arguments, CancellationToken ct);
+    /// <summary>Runs the program with each argument passed as one argv entry; no shell, no splitting.</summary>
+    Task<CommandResult> RunCommandAsync(string fileName, IReadOnlyList<string> arguments, CancellationToken ct);
 
     /// <summary>Returns null when the file does not exist.</summary>
     string? ReadFile(string path);

@@ -1,3 +1,4 @@
+using SecurityElement = System.Security.SecurityElement;
 using WinFixUsb.System;
 using WinFixUsb.Usb;
 
@@ -17,7 +18,7 @@ public class UsbWriterTests
         "RunCommand diskutil list -plist external physical",
         "RunCommand diskutil eraseDisk FAT32 WINFIX MBR disk4",
         "RunCommand rsync -r --exclude /sources/install.wim -- /Volumes/WINDOWS_ISO/ /Volumes/WINFIX/",
-        "RunCommand cp /Volumes/WINDOWS_ISO/sources/install.wim /Volumes/WINFIX/sources/install.wim",
+        "RunCommand cp -- /Volumes/WINDOWS_ISO/sources/install.wim /Volumes/WINFIX/sources/install.wim",
         "RunCommand hdiutil detach /Volumes/WINDOWS_ISO",
         "RunCommand diskutil eject disk4",
     ];
@@ -271,7 +272,7 @@ public class UsbWriterTests
     private static string MountPlist(string mount) =>
         "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>system-entities</key><array>"
         + "<dict><key>dev-entry</key><string>/dev/disk9</string></dict>"
-        + $"<dict><key>dev-entry</key><string>/dev/disk9s1</string><key>mount-point</key><string>{global::System.Security.SecurityElement.Escape(mount)}</string></dict>"
+        + $"<dict><key>dev-entry</key><string>/dev/disk9s1</string><key>mount-point</key><string>{SecurityElement.Escape(mount)}</string></dict>"
         + "</array></dict></plist>";
 
     [Fact]
