@@ -68,7 +68,7 @@ public class FixPipelineTests
         var text = output.ToString();
         Assert.Equal(0, exit);
         Assert.Contains("Repairs", text);
-        Assert.Contains("healthy after repair", text);
+        Assert.Contains("Fixed by", text);
         Assert.DoesNotContain("Confirm reset", text);
         Assert.DoesNotContain(fake.Calls, c => c.StartsWith("Reboot"));
     }
@@ -79,7 +79,7 @@ public class FixPipelineTests
         var (_, output, fake) = await RunAsync(shellHealthy: false);
 
         Assert.Contains("Confirm reset", output);
-        Assert.Equal(2, fake.Calls.Count(c => c == "FindWindow Shell_TrayWnd"));
+        Assert.Equal(4, fake.Calls.Count(c => c == "FindWindow Shell_TrayWnd"));
     }
 
     [Fact]
