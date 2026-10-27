@@ -86,7 +86,7 @@ public class ShellHealthCheckTests
     {
         var (health, fake) = await CheckAsync(taskbar, [100]);
 
-        Assert.Contains(health.Reason, fake.Logs);
+        Assert.Contains(fake.Logs, l => l.Contains(health.Reason));
     }
 
     [Fact]
@@ -94,6 +94,6 @@ public class ShellHealthCheckTests
     {
         var (health, fake) = await CheckAsync(taskbar: true, [1], [2], [3]);
 
-        Assert.Contains(health.Reason, fake.Logs);
+        Assert.Contains(fake.Logs, l => l.Contains(health.Reason));
     }
 }

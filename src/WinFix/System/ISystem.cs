@@ -17,5 +17,11 @@ public interface ISystem
 
     bool FindWindow(string className);
 
+    /// <summary>Waits without blocking a thread; the fake returns at once so tests never sleep.</summary>
+    Task DelayAsync(TimeSpan duration, CancellationToken ct);
+
+    /// <summary>Appends one line to the WinFix log.</summary>
+    void Log(string message);
+
     Task RebootAsync(CancellationToken ct);
 }
