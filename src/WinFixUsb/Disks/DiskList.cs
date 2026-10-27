@@ -64,6 +64,6 @@ public static class DiskList
     }
 
     /// <summary>The element after the &lt;key&gt; named <paramref name="key"/> in a plist dict.</summary>
-    private static XElement? Value(XElement? dict, string key) =>
+    internal static XElement? Value(XElement? dict, string key) =>
         dict?.Elements("key").FirstOrDefault(k => k.Value == key)?.NextNode as XElement;
 }

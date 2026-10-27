@@ -1,3 +1,4 @@
+using System.Text;
 using WinFix.System;
 
 namespace WinFixUsb.System;
@@ -25,6 +26,22 @@ public sealed class FakeMacSystem : IMacSystem
         </array></dict></plist>
         """;
 
+    /// <summary>File sizes keyed by path; a file in <see cref="Files"/> counts too.</summary>
+    public Dictionary<string, long> FileSizes { get; } = [];
+
+    /// <summary>Command lines (`file arguments`) starting with one of these exit 1.</summary>
+    public List<string> FailingCommands { get; } = [];
+
+    /// <summary>The `hdiutil attach -plist` output of an ISO mounted at /Volumes/WINDOWS_ISO.</summary>
+    public string IsoMountPlist { get; init; } =
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <plist version="1.0"><dict><key>system-entities</key><array>
+        <dict><key>dev-entry</key><string>/dev/disk9</string></dict>
+        <dict><key>dev-entry</key><string>/dev/disk9s1</string><key>mount-point</key><string>/Volumes/WINDOWS_ISO</string></dict>
+        </array></dict></plist>
+        """;
+
     /// <summary>Lines AskAsync returns in order; null once they run out.</summary>
     public IReadOnlyList<string> Answers
     {
@@ -40,14 +57,33 @@ public sealed class FakeMacSystem : IMacSystem
     public Task<CommandResult> RunCommandAsync(string fileName, string arguments, CancellationToken ct)
     {
         _calls.Add($"RunCommand {fileName} {arguments}".TrimEnd());
-        var isDiskList = fileName == "diskutil" && arguments == ListExternalDisks;
-        return Task.FromResult(new CommandResult(0, isDiskList ? ExternalDisks : string.Empty));
+        var line = $"{fileName} {arguments}";
+        if (FailingCommands.Any(line.StartsWith))
+        {
+            return Task.FromResult(new CommandResult(1, string.Empty, "failed"));
+        }
+
+        var output = line switch
+        {
+            _ when fileName == "diskutil" && arguments == ListExternalDisks => ExternalDisks,
+            _ when fileName == "hdiutil" && arguments.StartsWith("attach ") => IsoMountPlist,
+            _ => string.Empty,
+        };
+        return Task.FromResult(new CommandResult(0, output));
     }
 
     public string? ReadFile(string path)
     {
         _calls.Add($"ReadFile {path}");
         return Files.GetValueOrDefault(path);
+    }
+
+    public long? FileSize(string path)
+    {
+        _calls.Add($"FileSize {path}");
+        return FileSizes.TryGetValue(path, out var size) ? size
+            : Files.TryGetValue(path, out var content) ? Encoding.UTF8.GetByteCount(content)
+            : null;
     }
 
     public void WriteFile(string path, string content)

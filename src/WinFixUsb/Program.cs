@@ -1,6 +1,7 @@
 using WinFix;
 using WinFixUsb.Disks;
 using WinFixUsb.System;
+using WinFixUsb.Usb;
 
 namespace WinFixUsb;
 
@@ -25,7 +26,7 @@ public static class Program
     public static IMacSystem CreateSystem(bool dryRun, string? disk = null) =>
         dryRun
             ? new FakeMacSystem { Answers = [disk ?? "disk4"] }
-            : throw new NotSupportedException("The real Mac system is not built yet.");
+            : new MacSystem();
 
     public static async Task<int> RunAsync(string[] args, TextWriter output, IMacSystem? system = null)
     {
@@ -36,14 +37,21 @@ public static class Program
             return 0;
         }
 
-        if (!args.Contains("--dry-run"))
+        var dryRun = args.Contains("--dry-run");
+        var iso = ValueOf(args, "--iso");
+        var requestedDisk = ValueOf(args, "--disk");
+        if (!dryRun)
         {
-            output.WriteLine("Only --dry-run works so far. Run: WinFixUsb --dry-run");
-            return 2;
+            if (iso is null)
+            {
+                output.WriteLine("Pass the Windows ISO: WinFixUsb --iso <path>. To rehearse, run: WinFixUsb --dry-run");
+                return 2;
+            }
+
+            return await UsbWriter.WriteAsync(system ?? CreateSystem(dryRun: false), iso, requestedDisk, output, CancellationToken.None);
         }
 
-        var iso = ValueOf(args, "--iso") ?? UnknownIso;
-        var requestedDisk = ValueOf(args, "--disk");
+        iso ??= UnknownIso;
         system ??= CreateSystem(dryRun: true, requestedDisk);
 
         await Step(1, $"Find the ISO: {iso}", "hdiutil", $"attach -nobrowse -readonly -plist {iso}");

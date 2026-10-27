@@ -10,6 +10,9 @@ public interface IMacSystem
     /// <summary>Returns null when the file does not exist.</summary>
     string? ReadFile(string path);
 
+    /// <summary>Size in bytes; null when the file does not exist.</summary>
+    long? FileSize(string path);
+
     /// <summary>Creates missing folders; replaces an existing file.</summary>
     void WriteFile(string path, string content);
 
