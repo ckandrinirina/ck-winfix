@@ -252,6 +252,9 @@ public class UsbWriterTests
     [InlineData("/Volumes/a\\b")]
     [InlineData("/Volumes/a\nb")]
     [InlineData("/Volumes/a\" -e \"touch x")]
+    [InlineData("/Volumes/../Users/x")]
+    [InlineData("/Volumes/CCCOMA/..")]
+    [InlineData("/Volumes/CCCOMA/../../etc")]
     public async Task An_unsafe_mount_point_is_refused_before_the_erase_and_the_iso_is_detached(string mount)
     {
         var fake = new FakeMacSystem { Answers = ["disk4"], IsoMountPlist = MountPlist(mount) };
@@ -349,8 +352,7 @@ public class UsbWriterTests
         Assert.IsType<MacSystem>(Program.CreateSystem(dryRun: false));
     }
 
-    [Fact]
-    public void Only_MacSystem_starts_processes()
+    private static Dictionary<string, string> UsbSources()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "WinFix.sln")))
@@ -359,12 +361,29 @@ public class UsbWriterTests
         }
 
         Assert.NotNull(dir);
-        var offenders = Directory.EnumerateFiles(Path.Combine(dir.FullName, "src", "WinFixUsb"), "*.cs", SearchOption.AllDirectories)
+        return Directory.EnumerateFiles(Path.Combine(dir.FullName, "src", "WinFixUsb"), "*.cs", SearchOption.AllDirectories)
             .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
-            .Where(f => File.ReadAllText(f).Contains("Process.Start") || File.ReadAllText(f).Contains("new Process"))
-            .Select(Path.GetFileName)
+            .ToDictionary(f => Path.GetFileName(f), File.ReadAllText);
+    }
+
+    [Fact]
+    public void Only_MacSystem_starts_processes()
+    {
+        var offenders = UsbSources()
+            .Where(f => f.Value.Contains("Process.Start") || f.Value.Contains("new Process"))
+            .Select(f => f.Key)
             .ToArray();
 
         Assert.Equal(["MacSystem.cs"], offenders);
+    }
+
+    [Fact]
+    public void MacSystem_passes_arguments_through_ArgumentList_and_nothing_sets_Arguments()
+    {
+        var sources = UsbSources();
+
+        Assert.Contains("ArgumentList.Add", sources["MacSystem.cs"]);
+        var stringArguments = new global::System.Text.RegularExpressions.Regex(@"\.Arguments\s*=[^=]|new\s+ProcessStartInfo\s*\([^()]*,");
+        Assert.DoesNotContain(sources, f => stringArguments.IsMatch(f.Value));
     }
 }
