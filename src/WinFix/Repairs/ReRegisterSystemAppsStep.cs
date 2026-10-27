@@ -20,8 +20,15 @@ public sealed class ReRegisterSystemAppsStep : IRepairStep
                 continue;
             }
 
-            var manifest = $@"{package.InstallLocation}\AppxManifest.xml".Replace("'", "''");
-            var script = $"$ErrorActionPreference='Stop'; Add-AppxPackage -DisableDevelopmentMode -Register '{manifest}'";
+            var manifest = $@"{package.InstallLocation}\AppxManifest.xml";
+            if (!CommandArgs.CanQuotePowerShell(manifest))
+            {
+                system.Log($"{package.Name} has an install location that cannot be passed to PowerShell safely: {manifest}");
+                failure = failure == 0 ? 1 : failure;
+                continue;
+            }
+
+            var script = $"$ErrorActionPreference='Stop'; Add-AppxPackage -DisableDevelopmentMode -Register {CommandArgs.QuotePowerShell(manifest)}";
             var result = await system.RunCommandAsync(
                 "powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -Command \"{script}\"", ct);
             failure = result.ExitCode != 0 && failure == 0 ? result.ExitCode : failure;

@@ -72,6 +72,6 @@ public sealed partial class RollbackUpdateStep(Func<DateTimeOffset>? clock = nul
         return updates;
     }
 
-    [GeneratedRegex(@"^KB(\d+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^KB([0-9]+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex KbId();
 }

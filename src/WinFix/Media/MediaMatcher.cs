@@ -56,6 +56,11 @@ public static partial class MediaMatcher
     public static async Task<IReadOnlyList<WimImage>> ReadImagesAsync(ISystem system, string imagePath, CancellationToken ct)
     {
         var images = new List<WimImage>();
+        if (!CommandArgs.CanQuoteCmd(imagePath))
+        {
+            return images;
+        }
+
         for (var index = 1; index <= MaxImages; index++)
         {
             var result = await system.RunCommandAsync("dism", $"/Get-WimInfo /WimFile:\"{imagePath}\" /Index:{index}", ct);

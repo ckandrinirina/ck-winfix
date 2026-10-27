@@ -100,13 +100,13 @@ public sealed partial class RollbackDriverStep(Func<DateTimeOffset>? clock = nul
     /// <summary>pnputil shows no install date; the oem*.inf copy in the INF folder is created at install.</summary>
     private static async Task<DateTimeOffset?> InstallTimeAsync(ISystem system, string publishedName, CancellationToken ct)
     {
-        var script = $@"(Get-Item '{system.WindowsDirectory}\INF\{publishedName}').CreationTime.ToString('o')";
+        var script = $@"(Get-Item -LiteralPath {CommandArgs.QuotePowerShell($@"{system.WindowsDirectory}\INF\{publishedName}")}).CreationTime.ToString('o')";
         var result = await system.RunCommandAsync("powershell", $"-NoProfile -NonInteractive -Command \"{script}\"", ct);
         return result.ExitCode == 0 && DateTimeOffset.TryParse(result.Output.Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var time)
             ? time
             : null;
     }
 
-    [GeneratedRegex(@"^oem\d+\.inf$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^oem[0-9]+\.inf$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex OemInf();
 }

@@ -69,6 +69,12 @@ public sealed partial class MediaFinder
 
     private static async Task<Candidate?> MountAsync(ISystem system, string iso, List<Candidate> known, CancellationToken ct)
     {
+        if (!CommandArgs.CanQuotePowerShell(iso))
+        {
+            system.Log($"Install media {iso} skipped: its name holds a character that cannot be passed to PowerShell safely.");
+            return null;
+        }
+
         var root = await IsoMounter.MountAsync(system, iso, ct);
         if (root is null)
         {
@@ -111,7 +117,7 @@ public sealed partial class MediaFinder
 
     private static async Task<List<string>> ListIsosAsync(ISystem system, List<string> roots, CancellationToken ct)
     {
-        var folders = string.Join(",", roots.Select(IsoMounter.Quote));
+        var folders = string.Join(",", roots.Select(CommandArgs.QuotePowerShell));
         var script = $"$d = @({folders}); " +
             "$d += Join-Path $env:USERPROFILE 'Downloads'; " +
             "$d += [Environment]::GetFolderPath('Desktop'); " +
@@ -145,7 +151,7 @@ public sealed partial class MediaFinder
     private static async Task<bool> ExistsAsync(ISystem system, string path, CancellationToken ct)
     {
         var result = await system.RunCommandAsync(
-            "powershell", $"-NoProfile -NonInteractive -Command \"Test-Path -LiteralPath {IsoMounter.Quote(path)}\"", ct);
+            "powershell", $"-NoProfile -NonInteractive -Command \"Test-Path -LiteralPath {CommandArgs.QuotePowerShell(path)}\"", ct);
         return result.ExitCode == 0 && result.Output.Trim().Equals("True", StringComparison.OrdinalIgnoreCase);
     }
 

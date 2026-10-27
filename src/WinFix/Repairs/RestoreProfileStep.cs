@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using WinFix.Problems;
 using WinFix.System;
 
@@ -8,7 +9,7 @@ namespace WinFix.Repairs;
 /// the temporary key is moved to &lt;SID&gt;.temp and .bak is promoted. With a lone temporary key, the path is fixed only when
 /// C:\Users\&lt;account&gt;\NTUSER.DAT exists. Reboots afterwards.
 /// </summary>
-public sealed class RestoreProfileStep(Func<DateTimeOffset>? clock = null) : IRepairStep
+public sealed partial class RestoreProfileStep(Func<DateTimeOffset>? clock = null) : IRepairStep
 {
     private const string ListKey = ProfileProblem.ProfileListKey;
 
@@ -19,7 +20,7 @@ public sealed class RestoreProfileStep(Func<DateTimeOffset>? clock = null) : IRe
     public async Task<StepResult> RunAsync(ISystem system, CancellationToken ct)
     {
         var user = await ProfileProblem.CurrentUser.ReadAsync(system, ct);
-        if (user is null)
+        if (user is null || !Sid().IsMatch(user.Sid))
         {
             return Fail(system, "The current user could not be identified.");
         }
@@ -126,7 +127,17 @@ public sealed class RestoreProfileStep(Func<DateTimeOffset>? clock = null) : IRe
     private static async Task<string?> FindRealFolderAsync(ISystem system, ProfileProblem.CurrentUser user, CancellationToken ct)
     {
         var folder = $@"{system.WindowsDirectory[..2]}\Users\{user.Name}";
+        if (!CommandArgs.CanQuoteCmd(folder))
+        {
+            system.Log($"The profile folder {folder} cannot be checked safely.");
+            return null;
+        }
+
         var check = await system.RunCommandAsync("cmd.exe", $"/c if exist \"{folder}\\NTUSER.DAT\" (exit /b 0) else (exit /b 1)", ct);
         return check.ExitCode == 0 ? folder : null;
     }
+
+    // Read into reg command lines, so only ASCII digits are accepted.
+    [GeneratedRegex(@"^S-1-[0-9]+(?:-[0-9]+)+$", RegexOptions.CultureInvariant)]
+    private static partial Regex Sid();
 }
